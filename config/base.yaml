@@ -1,0 +1,173 @@
+_target_: diffusion_policy.workspace.train_diffusion_transformer_hybrid_workspace.TrainDiffusionTransformerHybridWorkspace
+checkpoint:
+  save_last_ckpt: true
+  save_last_snapshot: false
+  topk:
+    format_str: epoch={epoch:04d}-test_mean_score={test_mean_score:.3f}.ckpt
+    k: 5
+    mode: max
+    monitor_key: test_mean_score
+dataloader:
+  batch_size: 64
+  num_workers: 8
+  persistent_workers: false
+  pin_memory: true
+  shuffle: true
+dataset_obs_steps: 2
+ema:
+  _target_: diffusion_policy.model.diffusion.ema_model.EMAModel
+  inv_gamma: 1.0
+  max_value: 0.9999
+  min_value: 0.0
+  power: 0.75
+  update_after_step: 0
+exp_name: default
+horizon: 10
+keypoint_visible_rate: 1.0
+logging:
+  group: null
+  id: null
+  mode: online
+  name: ${now:%Y.%m.%d-%H.%M.%S}_${name}_${task_name}
+  project: diffusion_policy_debug
+  resume: true
+  tags:
+  - train_diffusion_transformer_hybrid
+  - can_image
+  - default
+multi_run:
+  run_dir: data/outputs/${now:%Y.%m.%d}/${now:%H.%M.%S}_${name}_${task_name}
+  wandb_name_base: ${now:%Y.%m.%d-%H.%M.%S}_${name}_${task_name}
+n_action_steps: 8
+n_latency_steps: 0
+n_obs_steps: 2
+name: train_diffusion_transformer_hybrid
+obs_as_cond: true
+optimizer:
+  betas:
+  - 0.9
+  - 0.95
+  learning_rate: 0.0001
+  obs_encoder_weight_decay: 1.0e-06
+  transformer_weight_decay: 0.001
+past_action_visible: false
+policy:
+  _target_: diffusion_policy.policy.diffusion_transformer_hybrid_image_policy.DiffusionTransformerHybridImagePolicy
+  causal_attn: true
+  crop_shape:
+  - 80 #76
+  - 80 #76
+  eval_fixed_crop: true
+  horizon: 10
+  n_tasks: 8
+  n_action_steps: 8
+  n_cond_layers: 0
+  n_emb: 512
+  n_head: 4
+  n_layer: 12
+  n_obs_steps: 2
+  noise_scheduler:
+    _target_: diffusers.schedulers.scheduling_ddpm.DDPMScheduler
+    beta_end: 0.02
+    beta_schedule: squaredcos_cap_v2
+    beta_start: 0.0001
+    clip_sample: true
+    num_train_timesteps: 100
+    prediction_type: epsilon
+    variance_type: fixed_small
+  num_inference_steps: 100
+  obs_as_cond: true
+  obs_encoder_group_norm: true
+  p_drop_attn: 0.3
+  p_drop_emb: 0.0
+  shape_meta:
+    action:
+      shape:
+      - 7
+    obs:
+      agentview_image:
+        shape:
+        - 3
+        - 84
+        - 84
+        type: rgb
+      robot0_eef_pos:
+        shape:
+        - 3
+      robot0_eef_quat:
+        shape:
+        - 4
+      robot0_eye_in_hand_image:
+        shape:
+        - 3
+        - 84
+        - 84
+        type: rgb
+      robot0_gripper_qpos:
+        shape:
+        - 2
+  time_as_cond: true
+shape_meta:
+  action:
+    shape:
+    - 7
+  obs:
+    agentview_image:
+      shape:
+      - 3
+      - 84
+      - 84
+      type: rgb
+    robot0_eef_pos:
+      shape:
+      - 3
+    robot0_eef_quat:
+      shape:
+      - 4
+    robot0_eye_in_hand_image:
+      shape:
+      - 3
+      - 84
+      - 84
+      type: rgb
+    robot0_gripper_qpos:
+      shape:
+      - 2
+task_name: multi-task
+training:
+  checkpoint_every: 1
+  debug: false
+  device: cuda:0
+  gradient_accumulate_every: 1
+  lr_scheduler: cosine
+  lr_warmup_steps: 100
+  max_train_steps: null
+  max_val_steps: null
+  num_epochs: 3500
+  resume: true
+  rollout_every: 50
+  sample_every: 10
+  seed: 42
+  tqdm_interval_sec: 1.0
+  use_ema: true
+  val_every: 10
+val_dataloader:
+  batch_size: 64
+  num_workers: 4
+  persistent_workers: false
+  pin_memory: true
+  shuffle: false
+
+task_num: 8
+task0: !include "config/tasks/square_d0.yaml" #2334
+task1: !include "config/tasks/stack_d0.yaml" #1632
+task2: !include "config/tasks/coffee_d0.yaml" #3402
+# task3: !include "config/tasks/coffee_preparation_d0.yaml" #10543
+task3: !include "config/tasks/hammer_cleanup_d0.yaml" #4356
+# task5: !include "config/tasks/kitchen_d0.yaml" #9429
+task4: !include "config/tasks/mug_cleanup_d0.yaml" #5162
+task5: !include "config/tasks/nut_assembly_d0.yaml" #5476
+# # task8: !include "config/tasks/pick_place_d0.yaml" #10359
+task6: !include "config/tasks/stack_three_d0.yaml" #3888
+task7: !include "config/tasks/threading_d0.yaml" #3424
+# task8: !include "config/tasks/three_piece_assembly_d0.yaml" #5140
