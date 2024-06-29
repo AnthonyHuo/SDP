@@ -112,8 +112,7 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
             )
 
         obs_encoder = policy.nets['policy'].nets['encoder'].nets['obs']
-        # obs_encoder.obs_nets.agentview_image.backbone = ResNet()
-        # obs_encoder.obs_nets.robot0_eye_in_hand_image.backbone = ResNet()
+
         k = [4,4,2,2]
         exp = [8,8,4,4]
         ### [16,16,8,8]
@@ -141,10 +140,7 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
                     num_channels=x.num_features)
             )
             
-            
-            # obs_encoder.obs_nets['agentview_image'].nets[0].nets   obs_encoder.obs_nets.agentview_image.backbone
-        # obs_encoder.obs_randomizers['agentview_image']
-        
+
         
         if eval_fixed_crop:
             replace_submodules(
@@ -399,17 +395,9 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
         
         # Predict the noise residual
         pred,aux_loss,probs = self.model(noisy_trajectory, timesteps, cond,task_id)
-        print(probs.shape)
+
         # Convert the tensor to a NumPy array
         probs_np = probs.detach().cpu().numpy()
-
-        # Specify the path to save the .npy file
-        path = f'/project_data/ramanan/pengliaj/sparse-diffusion-policy-8experts/sparse-diffusion-policy-master-1/probs_{task_id}.npy'
-
-        # Save the array to a .npy file
-        np.save(path, probs_np)
-
-        print(f"Probabilities saved to {path}")
 
         pred_type = self.noise_scheduler.config.prediction_type 
         if pred_type == 'epsilon':

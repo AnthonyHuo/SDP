@@ -1,4 +1,4 @@
-name: robodiff
+name: sdp
 channels:
   - pytorch
   - pytorch3d

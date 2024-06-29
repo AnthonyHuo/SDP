@@ -144,7 +144,7 @@ training:
   max_train_steps: null
   max_val_steps: null
   num_epochs: 3500
-  resume: true
+  resume: false
   rollout_every: 50
   sample_every: 10
   seed: 42
@@ -162,12 +162,8 @@ task_num: 8
 task0: !include "config/tasks/square_d0.yaml" #2334
 task1: !include "config/tasks/stack_d0.yaml" #1632
 task2: !include "config/tasks/coffee_d0.yaml" #3402
-# task3: !include "config/tasks/coffee_preparation_d0.yaml" #10543
 task3: !include "config/tasks/hammer_cleanup_d0.yaml" #4356
-# task5: !include "config/tasks/kitchen_d0.yaml" #9429
 task4: !include "config/tasks/mug_cleanup_d0.yaml" #5162
 task5: !include "config/tasks/nut_assembly_d0.yaml" #5476
-# # task8: !include "config/tasks/pick_place_d0.yaml" #10359
 task6: !include "config/tasks/stack_three_d0.yaml" #3888
 task7: !include "config/tasks/threading_d0.yaml" #3424
-# task8: !include "config/tasks/three_piece_assembly_d0.yaml" #5140

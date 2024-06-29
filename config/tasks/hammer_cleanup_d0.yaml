@@ -2,7 +2,7 @@ abs_action: false
 dataset:
   _target_: diffusion_policy.dataset.robomimic_replay_image_dataset.RobomimicReplayImageDataset
   abs_action: false
-  dataset_path: /project_data/ramanan/pengliaj/robomimic/datasets/core/hammer_cleanup_d0.hdf5
+  dataset_path: /mnt/hdd1/yixiao/robomimic/core/hammer_cleanup_d0.hdf5
   horizon: 10
   n_obs_steps: 2
   pad_after: 7

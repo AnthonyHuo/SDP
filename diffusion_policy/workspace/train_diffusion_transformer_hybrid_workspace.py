@@ -54,25 +54,17 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
 
         # configure training state
         self.optimizer = self.model.get_optimizer(**cfg.optimizer)
-        # self.optimizer = hydra.utils.instantiate(
-        #     cfg.optimizer, params=self.model.parameters())
+
         # configure training state
         self.global_step = 0
         self.epoch = 0
 
     def run(self):
         cfg = copy.deepcopy(self.cfg)
-        trainable_policy_param_num = 0
-        for name, param in self.model.named_parameters():
-            if 'obs_encoder' not in name:
-                print(name, np.prod(param.size()))
-        print("Trainable policy parameters: ", trainable_policy_param_num)
-        exit()
 
         # resume training
         if cfg.training.resume:   
-            # lastest_ckpt_path = pathlib.Path("/scratch/pengliaj/ROBOTICS/sparse-diffusion-policy/outputs/2024-03-19/17-11-49/checkpoints/epoch=0050-test_mean_score=5.430.ckpt") # self.get_checkpoint_path()
-            lastest_ckpt_path = pathlib.Path("/project_data/ramanan/pengliaj/sparse-diffusion-policy-8experts/sparse-diffusion-policy-master-1/outputs/2024-06-01/01-41-40/checkpoints/latest.ckpt")
+            lastest_ckpt_path = pathlib.Path("")
             if lastest_ckpt_path.is_file():
                 print(f"Resuming from checkpoint {lastest_ckpt_path}")
                 self.load_checkpoint(path=lastest_ckpt_path)
@@ -80,15 +72,13 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
         # configure dataset
         datasets: List[BaseImageDataset] = []
         for i in range(cfg.task_num):
-            # cfg.taski.dataset
             datasets.append(hydra.utils.instantiate(cfg[f'task{i}'].dataset))
-        # dataset3 = hydra.utils.instantiate(cfg.task3.dataset)
+        
         assert isinstance(datasets[0], BaseImageDataset)
         train_dataloaders = []
         normalizers=[]
         for dataset in datasets:
             train_dataloaders.append(DataLoader(dataset, **cfg.dataloader))
-        # train_dataloader3 = DataLoader(dataset3, **cfg.dataloader)
             normalizers.append(dataset.get_normalizer())
         max_train_dataloader_len = max([len(train_dataloader) for train_dataloader in train_dataloaders])
         for train_dataloader in train_dataloaders:
@@ -99,11 +89,11 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
         val_datasets=[]
         for dataset in datasets:
             val_datasets.append(dataset.get_validation_dataset())
-        # val_dataset3 = dataset3.get_validation_dataset()
+       
         val_dataloaders = []
         for val_dataset in val_datasets:
             val_dataloaders.append(DataLoader(val_dataset, **cfg.val_dataloader))
-        # val_dataloader3 = DataLoader(val_dataset3, **cfg.val_dataloader)
+
 
         self.model.set_normalizer(normalizers)
         if cfg.training.use_ema:
@@ -129,12 +119,6 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                 cfg.ema,
                 model=self.ema_model)
 
-        # configure env
-        # env_runners = []
-        # # env_runner3: BaseImageRunner
-        # for i in range(cfg.task_num):
-        #     env_runners.append(hydra.utils.instantiate(cfg[f'task{i}'].env_runner, output_dir=self.output_dir))
-        #     assert isinstance(env_runners[i], BaseImageRunner)
 
         # configure logging
         wandb_run = wandb.init(
@@ -187,13 +171,13 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                 step_log = dict()
                 # ========= train for this epoch ==========
                 train_losses = list()
-                # zip_train_dataloaders = zip_longest(*train_dataloaders)
+
                 with tqdm.tqdm(multi_traindataloader, desc=f"Training epoch {self.epoch}", 
                         leave=False, mininterval=cfg.training.tqdm_interval_sec) as tepoch:
                     for batch_idx,batch in enumerate(tepoch):
-                        # assert len(batchs) == cfg.task_num
+
                         assigned_task_id = batch_idx%cfg.task_num
-                        # dataloader = zip_train_dataloaders[assigned_task_id]
+                        
 
                         # load the next batch of the dataloader, 'DataLoader' object is not an iterator
                         assert assigned_task_id == multi_traindataloader.loader_idx
@@ -205,11 +189,7 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                             print("Assigning train_sampling_batch with task_id: ", assigned_task_id)
                             train_sampling_batchs[assigned_task_id] = batch
                 
-                        # elif random.random()<=1.0 and random.random()>=0.75:
-                        #     batch = dict_apply(batch3, lambda x: x.to(device, non_blocking=True))
-                        #     task_id = 3
-                        #     if train_sampling_batch3 is None:
-                        #         train_sampling_batch3 = batch
+
                         # compute loss
                         raw_loss = self.model.compute_loss(batch,task_id)
                         loss = raw_loss / cfg.training.gradient_accumulate_every
