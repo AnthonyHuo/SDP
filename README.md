@@ -6,7 +6,7 @@ Using Direct Download Links
 
 You can download the datasets manually through Google Drive. The folders each correspond to the dataset types described in [Dataset Types](#dataset-types).
 
-**Google Drive folder with all datasets:** [link](https://drive.google.com/drive/folders/14e9kkHGfApuQ709LBEbXrXVI1Lp5Ax7p?usp=drive_link)
+**Google Drive folder with all mimicgen datasets:** [link](https://drive.google.com/drive/folders/14e9kkHGfApuQ709LBEbXrXVI1Lp5Ax7p?usp=drive_link)
 
 Then, you should modify the dataset paths in the yaml files in config/tasks into your dataset path.
 
