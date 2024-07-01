@@ -119,6 +119,13 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                 cfg.ema,
                 model=self.ema_model)
 
+        # configure env
+        env_runners = []
+        # env_runner3: BaseImageRunner
+        for i in range(cfg.task_num):
+            env_runners.append(hydra.utils.instantiate(cfg[f'task{i}'].env_runner, output_dir=self.output_dir))
+            assert isinstance(env_runners[i], BaseImageRunner)
+
 
         # configure logging
         wandb_run = wandb.init(

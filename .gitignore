@@ -6,7 +6,8 @@ data
 data_local
 .vscode
 _wandb
-
+test_eval
+*.ckpt
 **/.DS_Store
 
 fuse.cfg

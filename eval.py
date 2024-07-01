@@ -1,6 +1,6 @@
 """
 Usage:
-python eval.py --checkpoint data/image/pusht/diffusion_policy_cnn/train_0/checkpoints/latest.ckpt -o data/pusht_eval_output
+python eval.py --checkpoint /path/to/ckpt -o /path/to/output_dir
 """
 
 import sys
@@ -20,29 +20,23 @@ from diffusion_policy.workspace.base_workspace import BaseWorkspace
 import copy
 from omegaconf.omegaconf import open_dict
 import yaml
-TASK_ID= 0
+
 taskid2cfg = {
-    0 : 'config/tasks/coffee_preparation_d0.yaml',
+    0 :"config/tasks/square_d0.yaml" ,
+    1 :"config/tasks/stack_d0.yaml" ,
+    2 :"config/tasks/coffee_d0.yaml" ,
+    3 :"config/tasks/hammer_cleanup_d0.yaml" ,
+    4 :"config/tasks/mug_cleanup_d0.yaml" ,
+    5 :"config/tasks/nut_assembly_d0.yaml" ,
+    6 :"config/tasks/stack_three_d0.yaml" ,
+    7: "config/tasks/threading_d0.yaml" ,
 }
 
 
-def process_task(task_id,cfg):
-    # delete the task0 key from the config
-    new_cfg = copy.deepcopy(cfg)
-    with open_dict(new_cfg):
-        del new_cfg['task0']
-        # add the task_id key to the config
-        yaml_path = taskid2cfg[task_id]
-        new_dict = {}
-        with open(yaml_path) as f:
-            data = yaml.load(f, Loader=yaml.FullLoader)
-        new_dict['task']=data
-        new_cfg.update(new_dict)
-    return new_cfg
 
 @click.command()
-@click.option('-c', '--checkpoint', default='/home/yixiao/ROBOTICS/sparse-diffusion-policy/outputs/2024-05-17/17-38-25/checkpoints/latest.ckpt')
-@click.option('-o', '--output_dir', default='eval_new_tasks_output/coffee_preparation_record')
+@click.option('-c', '--checkpoint', default='epoch=0299-test_mean_score=6.070.ckpt')
+@click.option('-o', '--output_dir', default='test_eval')
 @click.option('-d', '--device', default='cuda:0')
 def main(checkpoint, output_dir, device):
     if os.path.exists(output_dir):
@@ -52,14 +46,28 @@ def main(checkpoint, output_dir, device):
     # load checkpoint
     payload = torch.load(open(checkpoint, 'rb'), pickle_module=dill)
     cfg = payload['cfg']
-    cfg = process_task(TASK_ID,cfg)
+    for i in range(cfg['task_num']):
+        curr_cfg=taskid2cfg[i]
+        with open(curr_cfg, "r") as f:
+            task_cfg = yaml.safe_load(f)
+            cfg[f"task{i}"]=task_cfg
     cls = hydra.utils.get_class(cfg._target_)
     workspace = cls(cfg, output_dir=output_dir)
     workspace: BaseWorkspace
     workspace.load_payload(payload, exclude_keys=None, include_keys=None)
     
+    # run eval
+    # configure env
+    env_runners = []
+    # env_runner3: BaseImageRunner
+    for i in range(cfg.task_num):
+        env_runners.append(hydra.utils.instantiate(cfg[f'task{i}'].env_runner, output_dir=output_dir))
+
+
     # get policy from workspace
-    datasets=[hydra.utils.instantiate(cfg['task'].dataset)]
+    datasets= []
+    for i in range(cfg.task_num):
+        datasets.append(hydra.utils.instantiate(cfg[f'task{i}'].dataset))
     normalizers=[]
     for dataset in datasets:
         normalizers.append(dataset.get_normalizer())
@@ -69,29 +77,29 @@ def main(checkpoint, output_dir, device):
     if cfg.training.use_ema:
         workspace.ema_model.set_normalizer(normalizers)
         policy = workspace.ema_model
-    policy.task_id = torch.tensor(TASK_ID, dtype=torch.int64).to(device)
     device = torch.device(device)
     policy.to(device)
     for normalizer in policy.normalizers:
         normalizer.to(device)
     policy.eval()
     
-    # run eval
-    env_runner = hydra.utils.instantiate(
-        cfg.task.env_runner,
-        max_steps=400,
-        output_dir=output_dir)
-    runner_log = env_runner.run(policy, task_id=torch.tensor(TASK_ID, dtype=torch.int64).to(device))
+    
+    runner_logs = []
+    for i, env_runner in enumerate(env_runners):
+        runner_log = env_runner.run(policy,task_id=torch.tensor([i], dtype=torch.int64).to(device))
+        runner_log = {key + f'_{i}': value for key, value in runner_log.items()}
+        runner_logs.append(runner_log)
     
     # dump log to json
-    json_log = dict()
-    for key, value in runner_log.items():
-        if isinstance(value, wandb.sdk.data_types.video.Video):
-            json_log[key] = value._path
-        else:
-            json_log[key] = value
-    out_path = os.path.join(output_dir, 'eval_log.json')
-    json.dump(json_log, open(out_path, 'w'), indent=2, sort_keys=True)
+    for i,runner_log in enumerate(runner_logs):
+        json_log = dict()
+        for key, value in runner_log.items():
+            if isinstance(value, wandb.sdk.data_types.video.Video):
+                json_log[key] = value._path
+            else:
+                json_log[key] = value
+        out_path = os.path.join(output_dir, f'eval_log_{i}.json')
+        json.dump(json_log, open(out_path, 'w'), indent=2, sort_keys=True)
 
 if __name__ == '__main__':
     os.environ["CUDA_VISIBLE_DEVICES"]='1,'

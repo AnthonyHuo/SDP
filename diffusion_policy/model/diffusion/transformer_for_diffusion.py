@@ -347,22 +347,8 @@ class TransformerForDiffusion(ModuleAttrMixin):
             self.memory_mask = None
 
         # decoder head
-        self.ln_f0 = nn.LayerNorm(n_emb)
-        self.head0 = nn.Linear(n_emb, output_dim)
-        self.ln_f1 = nn.LayerNorm(n_emb)
-        self.head1 = nn.Linear(n_emb, output_dim)
-        self.ln_f2 = nn.LayerNorm(n_emb)
-        self.head2 = nn.Linear(n_emb, output_dim)
-        self.ln_f3 = nn.LayerNorm(n_emb)
-        self.head3 = nn.Linear(n_emb, output_dim)
-        self.ln_f4 = nn.LayerNorm(n_emb)
-        self.head4 = nn.Linear(n_emb, output_dim)
-        self.ln_f5 = nn.LayerNorm(n_emb)
-        self.head5 = nn.Linear(n_emb, output_dim)
-        self.ln_f6 = nn.LayerNorm(n_emb)
-        self.head6 = nn.Linear(n_emb, output_dim)
-        self.ln_f7 = nn.LayerNorm(n_emb)
-        self.head7 = nn.Linear(n_emb, output_dim)
+        self.ln_f = nn.LayerNorm(n_emb)
+        self.head = nn.Linear(n_emb, output_dim)
             
         # constants
         self.T = T
@@ -567,33 +553,8 @@ class TransformerForDiffusion(ModuleAttrMixin):
             )
             # (B,T,n_emb)
         
-        # head
-        if task_id==0:
-            x = self.ln_f0(x)
-            x = self.head0(x)
-        if task_id==1:
-            x = self.ln_f1(x)
-            x = self.head1(x)
-        if task_id==2:
-            x = self.ln_f2(x)
-            x = self.head2(x)
-        if task_id==3:
-            x = self.ln_f3(x)
-            x = self.head3(x)
-        if task_id==4:
-            x = self.ln_f4(x)
-            x = self.head4(x)
-        if task_id==5:
-            x = self.ln_f5(x)
-            x = self.head5(x)
-        if task_id==6:
-            x = self.ln_f6(x)
-            x = self.head6(x)
-        if task_id==7:
-            x = self.ln_f7(x)
-            x = self.head7(x)
-        # x = self.ln_f(x)
-        # x = self.head(x)
+        x = self.ln_f(x)
+        x = self.head(x)
         # (B,T,n_out)
         return x,loss,probs
 
