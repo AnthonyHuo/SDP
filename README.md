@@ -8,7 +8,7 @@ You can download the datasets manually through Google Drive. The folders each co
 
 **Google Drive folder with all datasets:** [link](https://drive.google.com/drive/folders/14e9kkHGfApuQ709LBEbXrXVI1Lp5Ax7p?usp=drive_link)
 
-Then, you should modify the dataset path in 
+Then, you should modify the dataset path in config/tasks into your dataset path.
 
 ### 🛠️ Installation
 #### 🖥️ Simulation
