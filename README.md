@@ -1,8 +1,4 @@
 # Sparse Diffusion Policy
-### Training
-```console
-$ python train.py
-```
 
 ### Dataset Download
 
@@ -11,31 +7,6 @@ Using Direct Download Links
 You can download the datasets manually through Google Drive. The folders each correspond to the dataset types described in [Dataset Types](#dataset-types).
 
 **Google Drive folder with all datasets:** [link](https://drive.google.com/drive/folders/14e9kkHGfApuQ709LBEbXrXVI1Lp5Ax7p?usp=drive_link)
-
-### Checkpoints
-
-Within each experiment directory you may find:
-```
-.
-├── config.yaml
-├── metrics
-│   └── logs.json.txt
-├── train_0
-│   ├── checkpoints
-│   │   ├── epoch=0300-test_mean_score=1.000.ckpt
-│   │   └── latest.ckpt
-│   └── logs.json.txt
-├── train_1
-│   ├── checkpoints
-│   │   ├── epoch=0250-test_mean_score=1.000.ckpt
-│   │   └── latest.ckpt
-│   └── logs.json.txt
-└── train_2
-    ├── checkpoints
-    │   ├── epoch=0250-test_mean_score=1.000.ckpt
-    │   └── latest.ckpt
-    └── logs.json.txt
-```
 
 ### 🛠️ Installation
 #### 🖥️ Simulation
@@ -114,3 +85,39 @@ pip install mujoco==2.3.2
 **Note**: This MuJoCo version (`2.3.2`) is important -- in our testing, we found that other versions of MuJoCo could be problematic, especially for the Sawyer arm datasets (e.g. `2.3.5` causes problems with rendering and `2.3.7` changes the dynamics of the robot arm significantly from the collected datasets).
 
 The `conda_environment_macos.yaml` file is only for development on MacOS and does not have full support for benchmarks.
+
+### Training
+```console
+$ python train.py
+```
+
+### Training Checkpoints
+
+Within each experiment directory you may find in outputs folder:
+```
+
+├── config.yaml
+├── metrics
+│   └── logs.json.txt
+├── train
+│   ├── checkpoints
+│   │   ├── epoch=0300-test_mean_score=1.000.ckpt
+│   │   └── latest.ckpt
+│   └── logs.json.txt
+
+```
+
+### Checkpoints
+
+You can download ours SDP checkpoints manually through Google Drive. 
+
+**Google Drive folder with our checkpoints:** [link](https://drive.google.com/file/d/1zpnTMHkOW1d9iXUsVNm-KipmXCmB5dwy/view?usp=drive_link)
+
+You can save the checkpoints in /path/to/ckpt.
+
+### Evaluation
+```console
+$ python eval.py --checkpoint /path/to/ckpt
+```
+
+Then you can get a similar multi-task results in our paper.
