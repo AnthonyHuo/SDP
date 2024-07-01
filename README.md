@@ -102,7 +102,7 @@ Within each experiment directory you may find in outputs folder:
 │   └── logs.json.txt
 ├── train
 │   ├── checkpoints
-│   │   ├── epoch=0300-test_mean_score=1.000.ckpt
+│   │   ├── epoch=0299-test_mean_score=0.600.ckpt
 │   │   └── latest.ckpt
 │   └── logs.json.txt
 
