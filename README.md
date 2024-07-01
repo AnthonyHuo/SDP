@@ -8,6 +8,8 @@ You can download the datasets manually through Google Drive. The folders each co
 
 **Google Drive folder with all datasets:** [link](https://drive.google.com/drive/folders/14e9kkHGfApuQ709LBEbXrXVI1Lp5Ax7p?usp=drive_link)
 
+Then, you should modify the dataset path in 
+
 ### 🛠️ Installation
 #### 🖥️ Simulation
 To reproduce our simulation benchmark results, install our conda environment on a Linux machine with Nvidia GPU. On Ubuntu 20.04 you need to install the following apt packages for mujoco:
