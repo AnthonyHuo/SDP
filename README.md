@@ -26,11 +26,10 @@ $ conda env create -f conda_environment.yaml
 ```
 ### Installation
 
-We recommend installing the repo into a new conda environment (it is called `mimicgen` in the example below):
+Then we install the packages for mimicgen:
 
 ```sh
-conda create -n mimicgen python=3.8
-conda activate mimicgen
+conda activate sdp
 ```
 
 You can install most of the dependencies by cloning the repository and then installing from source:
@@ -42,7 +41,7 @@ cd mimicgen_environments
 pip install -e .
 ```
 
-However, there are some additional dependencies that we list below. These are best installed from source:
+There are some additional dependencies that we list below. These are installed from source:
 
 - [robosuite](https://robosuite.ai/)
     - **Installation**
