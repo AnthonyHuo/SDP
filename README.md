@@ -91,6 +91,7 @@ The `conda_environment_macos.yaml` file is only for development on MacOS and doe
 ```console
 $ python train.py
 ```
+The results in our paper is evaluated every 50 epochs, after 100 epochs, you can get a result similar in our paper.
 
 ### Training Checkpoints
 
