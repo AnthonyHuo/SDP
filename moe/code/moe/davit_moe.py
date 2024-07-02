@@ -1,4 +1,3 @@
-""" Written by Mingyu """
 import logging
 from copy import deepcopy
 import itertools
