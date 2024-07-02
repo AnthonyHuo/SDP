@@ -8,7 +8,7 @@ You can download the datasets manually through Google Drive. The folders each co
 
 **Google Drive folder with all mimicgen datasets:** [link](https://drive.google.com/drive/folders/14e9kkHGfApuQ709LBEbXrXVI1Lp5Ax7p?usp=drive_link)
 
-Then, you should download the dataset in the path robomimic/core.
+Then, you should download the dataset with core folder in the path robomimic/core.
 
 ### 🛠️ Installation
 #### 🖥️ Simulation
