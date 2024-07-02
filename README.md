@@ -113,7 +113,7 @@ Within each experiment directory you may find in outputs folder:
 
 You can download ours SDP checkpoints manually through Google Drive. 
 
-**Google Drive folder with our checkpoints:** [link](https://drive.google.com/file/d/1So-byi2hNXIrPLsMT1KLaSbJTpRM1pil/view?usp=sharing)
+**Google Drive folder with our checkpoints:** [link](https://drive.google.com/file/d/1So-byi2hNXIrPLsMT1KLaSbJTpRM1pil/view)
 
 You can save the checkpoints in /path/to/ckpt.
 
