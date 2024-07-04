@@ -125,3 +125,13 @@ $ python eval.py --checkpoint /path/to/ckpt
 ```
 
 Then you can get a similar multi-task results in our paper.
+
+### Bibtex
+```console
+@article{wang2024sparse,
+        title={Sparse Diffusion Policy: A Sparse, Reusable, and Flexible Policy for Robot Learning},
+        author={Wang, Yixiao and Zhang, Yifei and Huo, Mingxiao and Tian, Ran and Zhang, Xiang and Xie, Yichen and Xu, Chenfeng and Ji, Pengliang and Zhan, Wei and Ding, Mingyu and others},
+        journal={arXiv preprint arXiv:2407.01531},
+        year={2024}
+      }
+```
