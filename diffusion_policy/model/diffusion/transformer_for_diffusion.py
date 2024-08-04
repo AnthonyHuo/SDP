@@ -113,10 +113,10 @@ class TransformerDecoderLayer(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.linear2 = nn.Linear(dim_feedforward, d_model, **factory_kwargs)
         self.task_moe_layer = TaskMoE(
-            d_model,
-            dim_feedforward //2,
-            8,
-            2,
+            input_size = d_model,
+            head_size = dim_feedforward // 16,
+            num_experts = 16,
+            k = 8,
             bias=True,
             acc_aux_loss=True,
             w_MI=0.0005, #0.0005
@@ -281,12 +281,22 @@ class TransformerForDiffusion(ModuleAttrMixin):
                     encoder_layer=encoder_layer,
                     num_layers=n_cond_layers
                 )
+                # print('_'*20)
             else:
+                # print('*'*20)
                 self.encoder = nn.Sequential(
                     nn.Linear(n_emb, 4 * n_emb),
                     nn.Mish(),
                     nn.Linear(4 * n_emb, n_emb)
                 )
+                
+            def count_parameters(model):
+                return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+            # Get the number of parameters
+            num_params = count_parameters(self.encoder)
+            print(f'The encoder has {num_params/1000000} trainable parameters')
+            
             # decoder
             decoder_layer = TransformerDecoderLayer(
                 d_model=n_emb,
@@ -302,6 +312,15 @@ class TransformerForDiffusion(ModuleAttrMixin):
                 decoder_layer=decoder_layer,
                 num_layers=n_layer
             )
+            
+            # Get the number of parameters
+            num_params = count_parameters(self.decoder)
+            print(f'The decoder has {num_params/1000000} trainable parameters')
+            
+            
+            ## encoder 2M decoder 158M
+            ## decoder 512 latent size; 512*4 for mlp size.
+            
         else:
             # encoder only BERT
             encoder_only = True

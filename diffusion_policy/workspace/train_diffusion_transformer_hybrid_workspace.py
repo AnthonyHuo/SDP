@@ -31,6 +31,7 @@ from diffusion_policy.model.common.lr_scheduler import get_scheduler
 from typing import List
 from diffusion_policy.dataset.multitask_dataset import MultiDataLoader
 from itertools import zip_longest
+import psutil
 OmegaConf.register_new_resolver("eval", eval, replace=True)
 
 class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
@@ -69,6 +70,8 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                 print(f"Resuming from checkpoint {lastest_ckpt_path}")
                 self.load_checkpoint(path=lastest_ckpt_path)
 
+        mem=psutil.virtual_memory()
+        print('before current available memory is' +' : '+ str(round(mem.used/1024**2)) +' MIB')
         # configure dataset
         datasets: List[BaseImageDataset] = []
         for i in range(cfg.task_num):
@@ -85,6 +88,10 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
             print("Length of train_dataloader: ", len(train_dataloader))
         multi_traindataloader=MultiDataLoader(train_dataloaders)
         multi_traindataloader.get_memory_usage()
+        
+        mem=psutil.virtual_memory()
+        print('after current available memory is' +' : '+ str(round(mem.used/1024**2)) +' MIB')
+        # exit()
         # configure validation dataset
         val_datasets=[]
         for dataset in datasets:
@@ -119,12 +126,12 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                 cfg.ema,
                 model=self.ema_model)
 
-        # configure env
-        env_runners = []
-        # env_runner3: BaseImageRunner
-        for i in range(cfg.task_num):
-            env_runners.append(hydra.utils.instantiate(cfg[f'task{i}'].env_runner, output_dir=self.output_dir))
-            assert isinstance(env_runners[i], BaseImageRunner)
+        # # configure env
+        # env_runners = []
+        # # env_runner3: BaseImageRunner
+        # for i in range(cfg.task_num):
+        #     env_runners.append(hydra.utils.instantiate(cfg[f'task{i}'].env_runner, output_dir=self.output_dir))
+        #     assert isinstance(env_runners[i], BaseImageRunner)
 
 
         # configure logging
@@ -251,12 +258,14 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                 # run rollout
                 runner_logs = []
                 if ((self.epoch+1) % cfg.training.rollout_every) == 0:
-                    for i, env_runner in enumerate(env_runners):
+                    for i in range(cfg.task_num):
+                        env_runner = hydra.utils.instantiate(cfg[f'task{i}'].env_runner, output_dir=self.output_dir)
                         runner_log = env_runner.run(policy,task_id=torch.tensor([i], dtype=torch.int64).to(device))
                         runner_log = {key + f'_{i}': value for key, value in runner_log.items()}
                         runner_logs.append(runner_log)
                     for runner_log in runner_logs:
                         step_log.update(runner_log)
+                env_runner = None
                 # run validation
                 if (self.epoch % cfg.training.val_every) == 0:
                     with torch.no_grad():

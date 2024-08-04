@@ -14,6 +14,8 @@ from omegaconf import OmegaConf
 import pathlib
 from diffusion_policy.workspace.base_workspace import BaseWorkspace
 import os
+from argparse import ArgumentParser
+
 
 # allows arbitrary python code execution in configs using the ${eval:''} resolver
 OmegaConf.register_new_resolver("eval", eval, replace=True)
@@ -34,9 +36,14 @@ def main(cfg: OmegaConf):
     workspace.run()
 
 if __name__ == "__main__":
-    os.environ["CUDA_VISIBLE_DEVICES"]='0,'
+    os.environ["CUDA_VISIBLE_DEVICES"]='2,'
     os.environ["MUJOCO_GL"]="osmesa"
     from utils.recursive_yaml import read_yaml, write_yaml
-    data = read_yaml('config/base.yaml')
+
+    parser = ArgumentParser()
+    parser.add_argument('--config', type=str, required=True)    
+    args = parser.parse_args()
+    
+    data = read_yaml('config/'+args.config+'.yaml')
     write_yaml(data, 'config/tmp/full.yaml')
     main()

@@ -9,7 +9,7 @@ checkpoint:
     monitor_key: test_mean_score
 dataloader:
   batch_size: 64
-  num_workers: 8
+  num_workers: 1
   persistent_workers: false
   pin_memory: true
   shuffle: true
@@ -64,7 +64,7 @@ policy:
   n_cond_layers: 0
   n_emb: 512
   n_head: 4
-  n_layer: 12
+  n_layer: 8
   n_obs_steps: 2
   noise_scheduler:
     _target_: diffusers.schedulers.scheduling_ddpm.DDPMScheduler
@@ -135,7 +135,7 @@ shape_meta:
       - 2
 task_name: multi-task
 training:
-  checkpoint_every: 1
+  checkpoint_every: 50
   debug: false
   device: cuda:0
   gradient_accumulate_every: 1
@@ -146,14 +146,14 @@ training:
   num_epochs: 3500
   resume: false
   rollout_every: 50
-  sample_every: 10
+  sample_every: 50
   seed: 42
   tqdm_interval_sec: 1.0
   use_ema: true
   val_every: 10
 val_dataloader:
   batch_size: 64
-  num_workers: 4
+  num_workers: 1
   persistent_workers: false
   pin_memory: true
   shuffle: false

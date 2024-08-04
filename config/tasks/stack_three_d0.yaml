@@ -2,7 +2,7 @@ abs_action: false
 dataset:
   _target_: diffusion_policy.dataset.robomimic_replay_image_dataset.RobomimicReplayImageDataset
   abs_action: false
-  dataset_path: robomimic/core/stack_three_d0.hdf5
+  dataset_path: /mnt/hdd1/yixiao/robomimic/core/stack_three_d0.hdf5
   horizon: 10
   n_obs_steps: 2
   pad_after: 7
@@ -37,12 +37,12 @@ dataset:
         - 2
   use_cache: true
   val_ratio: 0.02
-dataset_path: robomimic/core/stack_three_d0.hdf5
+dataset_path: /mnt/hdd1/yixiao/robomimic/core/stack_three_d0.hdf5
 env_runner:
   _target_: diffusion_policy.env_runner.robomimic_image_runner.RobomimicImageRunner
   abs_action: false
   crf: 22
-  dataset_path: robomimic/core/stack_three_d0.hdf5
+  dataset_path: /mnt/hdd1/yixiao/robomimic/core/stack_three_d0.hdf5
   fps: 10
   max_steps: 400
   n_action_steps: 8

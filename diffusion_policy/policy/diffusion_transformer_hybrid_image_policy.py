@@ -113,22 +113,30 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
 
         obs_encoder = policy.nets['policy'].nets['encoder'].nets['obs']
 
-        k = [4,4,2,2]
-        exp = [8,8,4,4]
-        ### [16,16,8,8]
-        patch_size = [2,2,2,2]
-        n_blocks_list = [2,2,2,2]
+        # k = [4,4,2,2]
+        # exp = [8,8,4,4]
+        # ### [16,16,8,8]
+        # patch_size = [2,2,2,2]
+        # n_blocks_list = [2,2,2,2]
         
 
-        obs_encoder.obs_nets.agentview_image.backbone = PatchMoeResNet(k = k, 
-                                                                       exp = exp, 
-                                                                       patch_size=patch_size ,
-                                                                       n_blocks_list=n_blocks_list)
+        # obs_encoder.obs_nets.agentview_image.backbone = PatchMoeResNet(k = k, 
+        #                                                                exp = exp, 
+        #                                                                patch_size=patch_size ,
+        #                                                                n_blocks_list=n_blocks_list)
         
-        obs_encoder.obs_nets.robot0_eye_in_hand_image.backbone = PatchMoeResNet(k = k, 
-                                                                                exp = exp, 
-                                                                                patch_size=patch_size ,
-                                                                                n_blocks_list=n_blocks_list)
+        # obs_encoder.obs_nets.robot0_eye_in_hand_image.backbone = PatchMoeResNet(k = k, 
+        #                                                                         exp = exp, 
+        #                                                                         patch_size=patch_size ,
+        #                                                                         n_blocks_list=n_blocks_list)
+        
+        
+        def count_parameters(model):
+                return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+        # Get the number of parameters
+        num_params = count_parameters(obs_encoder)
+        print(f'The ob1 has {num_params/1000000} trainable parameters')
         
         if obs_encoder_group_norm:
             # replace batch norm with group norm
