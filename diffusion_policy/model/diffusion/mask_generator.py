@@ -61,7 +61,8 @@ class LowdimMaskGenerator(ModuleAttrMixin):
         device = self.device
         B, T, D = shape
         
-        assert D == (self.action_dim + self.obs_dim)
+        assert D == (self.action_dim + self.obs_dim), \
+            f"Expected D={self.action_dim + self.obs_dim}, got D={D}"
 
         # create all tensors on this device
         rng = torch.Generator(device=device)

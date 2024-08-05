@@ -62,16 +62,25 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
 
     def run(self):
         cfg = copy.deepcopy(self.cfg)
+        if cfg.policy.n_fixed_tasks>0:
+            for name, param in self.model.named_parameters():
+                if 'experts' in name:
+                    continue
+                if 'task_moe_layer' not in name and 'gate' not in name:
+                    param.requires_grad = False
+        # # resume training
+        # if cfg.training.resume:   
+        #     lastest_ckpt_path = pathlib.Path("")
+        #     if lastest_ckpt_path.is_file():
+        #         print(f"Resuming from checkpoint {lastest_ckpt_path}")
+        #         self.load_checkpoint(path=lastest_ckpt_path)
 
-        # resume training
-        if cfg.training.resume:   
-            lastest_ckpt_path = pathlib.Path("")
-            if lastest_ckpt_path.is_file():
-                print(f"Resuming from checkpoint {lastest_ckpt_path}")
-                self.load_checkpoint(path=lastest_ckpt_path)
+        pretrained_model_path = cfg[f'pretrained_path']
+        if cfg.policy.n_fixed_tasks>0 and pretrained_model_path is not None:
+            print(f"Loading pretrained model from {pretrained_model_path}")
+            self.load_checkpoint(path=pretrained_model_path,filter=True)
 
-        mem=psutil.virtual_memory()
-        print('before current available memory is' +' : '+ str(round(mem.used/1024**2)) +' MIB')
+        
         # configure dataset
         datasets: List[BaseImageDataset] = []
         for i in range(cfg.task_num):
@@ -86,12 +95,7 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
         max_train_dataloader_len = max([len(train_dataloader) for train_dataloader in train_dataloaders])
         for train_dataloader in train_dataloaders:
             print("Length of train_dataloader: ", len(train_dataloader))
-        multi_traindataloader=MultiDataLoader(train_dataloaders)
-        multi_traindataloader.get_memory_usage()
-        
-        mem=psutil.virtual_memory()
-        print('after current available memory is' +' : '+ str(round(mem.used/1024**2)) +' MIB')
-        # exit()
+
         # configure validation dataset
         val_datasets=[]
         for dataset in datasets:
@@ -127,11 +131,11 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                 model=self.ema_model)
 
         # # configure env
-        # env_runners = []
+        env_runners = []
         # # env_runner3: BaseImageRunner
-        # for i in range(cfg.task_num):
-        #     env_runners.append(hydra.utils.instantiate(cfg[f'task{i}'].env_runner, output_dir=self.output_dir))
-        #     assert isinstance(env_runners[i], BaseImageRunner)
+        for i in range(cfg.task_num):
+            env_runners.append(hydra.utils.instantiate(cfg[f'task{i}'].env_runner, output_dir=self.output_dir))
+            assert isinstance(env_runners[i], BaseImageRunner)
 
 
         # configure logging
@@ -140,11 +144,11 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
             config=OmegaConf.to_container(cfg, resolve=True),
             **cfg.logging
         )
-        wandb.config.update(
-            {
-                "output_dir": self.output_dir,
-            }
-        )
+        # wandb.config.update(
+        #     {
+        #         "output_dir": self.output_dir,
+        #     }
+        # )
 
         # configure checkpoint
         topk_manager = TopKCheckpointManager(
@@ -173,7 +177,7 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
             cfg.training.num_epochs = 2
             cfg.training.max_train_steps = 3
             cfg.training.max_val_steps = 3
-            cfg.training.rollout_every = 1
+            cfg.training.rollout_every = 10
             cfg.training.checkpoint_every = 1
             cfg.training.val_every = 1
             cfg.training.sample_every = 1
@@ -185,19 +189,15 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                 step_log = dict()
                 # ========= train for this epoch ==========
                 train_losses = list()
-
-                with tqdm.tqdm(multi_traindataloader, desc=f"Training epoch {self.epoch}", 
+                zip_train_dataloaders = zip_longest(*train_dataloaders)
+                with tqdm.tqdm(zip_train_dataloaders, desc=f"Training epoch {self.epoch}", 
                         leave=False, mininterval=cfg.training.tqdm_interval_sec) as tepoch:
-                    for batch_idx,batch in enumerate(tepoch):
-
-                        assigned_task_id = batch_idx%cfg.task_num
-                        
-
-                        # load the next batch of the dataloader, 'DataLoader' object is not an iterator
-                        assert assigned_task_id == multi_traindataloader.loader_idx
-                        if batch is None:
+                    for batch_idx,batchs in enumerate(tepoch):
+                        assert len(batchs) == cfg.task_num
+                        assigned_task_id = int(-1)
+                        if batchs[assigned_task_id] is None:
                             continue
-                        batch = dict_apply(batch, lambda x: x.to(device, non_blocking=True))
+                        batch = dict_apply(batchs[assigned_task_id], lambda x: x.to(device, non_blocking=True))
                         task_id = torch.tensor([assigned_task_id], dtype=torch.int64).to(device)
                         if train_sampling_batchs[assigned_task_id] is None:
                             print("Assigning train_sampling_batch with task_id: ", assigned_task_id)
@@ -258,9 +258,8 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                 # run rollout
                 runner_logs = []
                 if ((self.epoch+1) % cfg.training.rollout_every) == 0:
-                    for i in range(cfg.task_num):
-                        env_runner = hydra.utils.instantiate(cfg[f'task{i}'].env_runner, output_dir=self.output_dir)
-                        runner_log = env_runner.run(policy,task_id=torch.tensor([i], dtype=torch.int64).to(device))
+                    for i, env_runner in enumerate(env_runners):
+                        runner_log = env_runner.run(policy,task_id=torch.tensor(-1, dtype=torch.int64).to(device))
                         runner_log = {key + f'_{i}': value for key, value in runner_log.items()}
                         runner_logs.append(runner_log)
                     for runner_log in runner_logs:
@@ -281,7 +280,7 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                                     if batch is None:
                                         continue
                                     batch = dict_apply(batch, lambda x: x.to(device, non_blocking=True))
-                                    loss = self.model.compute_loss(batch,task_id=torch.tensor([i], dtype=torch.int64).to(device))
+                                    loss = self.model.compute_loss(batch,task_id=torch.tensor(-1, dtype=torch.int64).to(device))
                                     val_losses_list[i].append(loss)
                                     if (cfg.training.max_val_steps is not None) \
                                         and batch_idx >= (cfg.training.max_val_steps-1):
@@ -346,7 +345,7 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                 json_logger.log(step_log)
                 self.global_step += 1
                 self.epoch += 1
-                multi_traindataloader.reset()
+
 
 @hydra.main(
     version_base=None,

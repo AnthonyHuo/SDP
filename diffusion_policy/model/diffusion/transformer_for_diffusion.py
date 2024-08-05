@@ -7,7 +7,7 @@ from diffusion_policy.model.common.module_attr_mixin import ModuleAttrMixin
 import torch.nn.functional as F
 from torch import nn, Tensor
 import copy
-from mixture_of_experts.moe import MoE
+from task_moe.moe import MoE
 from mixture_of_experts.task_moe import TaskMoE
 logger = logging.getLogger(__name__)
 class TransformerDecoder(nn.Module):
@@ -52,7 +52,7 @@ class TransformerDecoder(nn.Module):
         output = tgt
         loss = 0.0
         for mod in self.layers:
-            output,aux_loss,probs = mod(output,task_id, memory, tgt_mask=tgt_mask,
+            output,aux_loss = mod(output,task_id, memory, tgt_mask=tgt_mask,
                          memory_mask=memory_mask,
                          tgt_key_padding_mask=tgt_key_padding_mask,
                          memory_key_padding_mask=memory_key_padding_mask)
@@ -61,7 +61,7 @@ class TransformerDecoder(nn.Module):
         if self.norm is not None:
             output = self.norm(output)
 
-        return output,loss,probs
+        return output,loss
 class TransformerDecoderLayer(nn.Module):
     r"""TransformerDecoderLayer is made up of self-attn, multi-head-attn and feedforward network.
     This standard decoder layer is based on the paper "Attention Is All You Need".
@@ -98,7 +98,7 @@ class TransformerDecoderLayer(nn.Module):
     """
     __constants__ = ['batch_first', 'norm_first']
 
-    def __init__(self, d_model: int, n_tasks: int, nhead: int, dim_feedforward: int = 2048, dropout: float = 0.1,
+    def __init__(self, d_model: int, n_fixed_tasks: int, nhead: int, dim_feedforward: int = 2048, dropout: float = 0.1,
                  activation: Union[str, Callable[[Tensor], Tensor]] = F.relu,
                  layer_norm_eps: float = 1e-5, batch_first: bool = False, norm_first: bool = False,
                  device=None, dtype=None) -> None:
@@ -115,13 +115,13 @@ class TransformerDecoderLayer(nn.Module):
         self.task_moe_layer = TaskMoE(
             input_size = d_model,
             head_size = dim_feedforward // 16,
-            num_experts = 16,
+            num_experts_per_task=16,
             k = 8,
             bias=True,
             acc_aux_loss=True,
             w_MI=0.0005, #0.0005
             w_finetune_MI=0,
-            task_num=n_tasks,
+            fixed_task_num=n_fixed_tasks,
             activation=nn.Sequential(
                 nn.GELU(),
             ),
@@ -167,7 +167,7 @@ class TransformerDecoderLayer(nn.Module):
         if self.norm_first:
             x = x + self._sa_block(self.norm1(x), tgt_mask, tgt_key_padding_mask)
             x = x + self._mha_block(self.norm2(x), memory, memory_mask, memory_key_padding_mask)
-            output,aux_loss,probs = self._ff_block(self.norm3(x),task_id)
+            output,aux_loss = self._ff_block(self.norm3(x),task_id)
             x = x + output
             # aux_loss = self._ff_block(self.norm3(x),task_id)[1]
         else:
@@ -175,7 +175,7 @@ class TransformerDecoderLayer(nn.Module):
             x = self.norm2(x + self._mha_block(x, memory, memory_mask, memory_key_padding_mask))
             x = self.norm3(x + self._ff_block(x,task_id))
 
-        return x,aux_loss,probs
+        return x,aux_loss
 
     # self-attention block
     def _sa_block(self, x: Tensor,
@@ -198,8 +198,8 @@ class TransformerDecoderLayer(nn.Module):
     # feed forward block
     def _ff_block(self, x: Tensor,task_id) -> Tensor:
         # x = self.linear2(self.dropout(self.activation(self.linear1(x))))
-        x,aux_loss,probs= self.task_moe_layer(x,task_id)
-        return self.dropout3(x),aux_loss,probs
+        x,aux_loss= self.task_moe_layer(x,task_id)
+        return self.dropout3(x),aux_loss
 
 
 def _get_clones(module, N):
@@ -222,7 +222,7 @@ class TransformerForDiffusion(ModuleAttrMixin):
             horizon: int,
             n_obs_steps: int = None,
             cond_dim: int = 0,
-            n_tasks: int = 1,
+            n_fixed_tasks: int = 1,
             n_layer: int = 12,
             n_head: int = 12,
             n_emb: int = 768,
@@ -250,7 +250,14 @@ class TransformerForDiffusion(ModuleAttrMixin):
             T_cond += n_obs_steps
 
         # input embedding stem
-        self.input_emb = nn.Linear(input_dim, n_emb)
+        self.input_emb=MoE(input_size=input_dim, output_size=n_emb,
+                           module=nn.Linear(input_dim, n_emb),num_experts_per_task=2,
+                           k=2,
+                            w_MI=0.0005, #0.0005
+                            w_finetune_MI=0,
+                            fixed_task_num=n_fixed_tasks,
+                            noisy_gating=False,
+                        )
         self.pos_emb = nn.Parameter(torch.zeros(1, T, n_emb))
         self.drop = nn.Dropout(p_drop_emb)
 
@@ -259,7 +266,16 @@ class TransformerForDiffusion(ModuleAttrMixin):
         self.cond_obs_emb = None
         
         if obs_as_cond:
-            self.cond_obs_emb = nn.Linear(cond_dim, n_emb)
+            self.cond_obs_emb = MoE(
+                input_size=cond_dim, output_size=n_emb,
+                module=nn.Linear(cond_dim, n_emb),
+                num_experts_per_task=2,
+                k=2,
+                w_MI=0.0005, #0.0005
+                w_finetune_MI=0,
+                fixed_task_num=n_fixed_tasks,
+                noisy_gating=False,
+            )
 
         self.cond_pos_emb = None
         self.encoder = None
@@ -268,6 +284,7 @@ class TransformerForDiffusion(ModuleAttrMixin):
         if T_cond > 0:
             self.cond_pos_emb = nn.Parameter(torch.zeros(1, T_cond, n_emb))
             if n_cond_layers > 0:
+                raise NotImplementedError("MoE not implemented for cond encoder")
                 encoder_layer = nn.TransformerEncoderLayer(
                     d_model=n_emb,
                     nhead=n_head,
@@ -284,10 +301,19 @@ class TransformerForDiffusion(ModuleAttrMixin):
                 # print('_'*20)
             else:
                 # print('*'*20)
-                self.encoder = nn.Sequential(
+                self.encoder = MoE(
+                    input_size=n_emb, output_size=n_emb,
+                    module=nn.Sequential(
                     nn.Linear(n_emb, 4 * n_emb),
                     nn.Mish(),
                     nn.Linear(4 * n_emb, n_emb)
+                    ),
+                    num_experts_per_task=2,
+                    k=2,
+                    w_MI=0.0005, 
+                    w_finetune_MI=0,
+                    fixed_task_num=n_fixed_tasks,
+                    noisy_gating=False,
                 )
                 
             def count_parameters(model):
@@ -301,7 +327,7 @@ class TransformerForDiffusion(ModuleAttrMixin):
             decoder_layer = TransformerDecoderLayer(
                 d_model=n_emb,
                 nhead=n_head,
-                n_tasks=n_tasks,
+                n_fixed_tasks=n_fixed_tasks,
                 dim_feedforward=4*n_emb,
                 dropout=p_drop_attn,
                 activation='gelu',
@@ -322,6 +348,7 @@ class TransformerForDiffusion(ModuleAttrMixin):
             ## decoder 512 latent size; 512*4 for mlp size.
             
         else:
+            raise NotImplementedError("MoE not implemented for encoder only")
             # encoder only BERT
             encoder_only = True
 
@@ -366,8 +393,27 @@ class TransformerForDiffusion(ModuleAttrMixin):
             self.memory_mask = None
 
         # decoder head
-        self.ln_f = nn.LayerNorm(n_emb)
-        self.head = nn.Linear(n_emb, output_dim)
+        self.ln_f = MoE(
+            input_size=n_emb, output_size=n_emb,
+            module=nn.LayerNorm(n_emb),
+            num_experts_per_task=8,
+            k=4,
+            w_MI=0.0005, #0.0005
+            w_finetune_MI=0,
+            fixed_task_num=n_fixed_tasks,
+            noisy_gating=False,
+
+        )
+        self.head = MoE(
+            input_size=n_emb, output_size=output_dim,
+            module=nn.Linear(n_emb, output_dim),
+            num_experts_per_task=2,
+            k=1,
+            w_MI=0.0005, #0.0005
+            w_finetune_MI=0,
+            fixed_task_num=n_fixed_tasks,
+            noisy_gating=False,
+        )
             
         # constants
         self.T = T
@@ -455,6 +501,10 @@ class TransformerForDiffusion(ModuleAttrMixin):
                     no_decay.add(fpn)
                 elif pn.endswith("experts.weight"):
                     no_decay.add(fpn)
+                elif pn.endswith("experts.old_weight"):
+                    no_decay.add(fpn)
+                elif pn.endswith("experts.new_weight"):
+                    no_decay.add(fpn)
         # special case the position embedding parameter in the root GPT module as not decayed
         no_decay.add("pos_emb")
         no_decay.add("_dummy_variable")
@@ -524,9 +574,10 @@ class TransformerForDiffusion(ModuleAttrMixin):
         # (B,1,n_emb)
 
         # process input
-        input_emb = self.input_emb(sample)
+        input_emb = self.input_emb(sample, task_id)
 
         if self.encoder_only:
+            raise NotImplementedError("MoE not implemented for encoder only")
             # BERT
             token_embeddings = torch.cat([time_emb, input_emb], dim=1)
             t = token_embeddings.shape[1]
@@ -543,7 +594,7 @@ class TransformerForDiffusion(ModuleAttrMixin):
             # encoder
             cond_embeddings = time_emb
             if self.obs_as_cond:
-                cond_obs_emb = self.cond_obs_emb(cond)
+                cond_obs_emb = self.cond_obs_emb(cond, task_id)
                 # (B,To,n_emb)
                 cond_embeddings = torch.cat([cond_embeddings, cond_obs_emb], dim=1)
             tc = cond_embeddings.shape[1]
@@ -551,7 +602,7 @@ class TransformerForDiffusion(ModuleAttrMixin):
                 :, :tc, :
             ]  # each position maps to a (learnable) vector
             x = self.drop(cond_embeddings + position_embeddings)
-            x = self.encoder(x)
+            x = self.encoder(x, task_id)
             memory = x
             # (B,T_cond,n_emb)
             
@@ -563,7 +614,7 @@ class TransformerForDiffusion(ModuleAttrMixin):
             ]  # each position maps to a (learnable) vector
             x = self.drop(token_embeddings + position_embeddings)
             # (B,T,n_emb)
-            x,loss,probs = self.decoder(
+            x,loss = self.decoder(
                 tgt=x,
                 task_id=task_id,
                 memory=memory,
@@ -572,10 +623,10 @@ class TransformerForDiffusion(ModuleAttrMixin):
             )
             # (B,T,n_emb)
         
-        x = self.ln_f(x)
-        x = self.head(x)
+        x = self.ln_f(x,task_id)
+        x = self.head(x,task_id)
         # (B,T,n_out)
-        return x,loss,probs
+        return x,loss
 
 
 def test():

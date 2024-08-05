@@ -73,22 +73,89 @@ class BaseWorkspace:
     def get_checkpoint_path(self, tag='latest'):
         return pathlib.Path(self.output_dir).joinpath('checkpoints', f'{tag}.ckpt')
 
-    def load_payload(self, payload, exclude_keys=None, include_keys=None, **kwargs):
+    def load_payload(self, payload, exclude_keys=None, include_keys=None, filter=False, **kwargs):
         if exclude_keys is None:
-            exclude_keys = tuple()
+            if filter:
+                exclude_keys = tuple(['optimizer','cfg'])
+            else:
+                exclude_keys = tuple()
         if include_keys is None:
             include_keys = payload['pickles'].keys()
-
         for key, value in payload['state_dicts'].items():
             if key not in exclude_keys:
-                self.__dict__[key].load_state_dict(value, **kwargs)
+                if filter:
+                    print(f"Filtering {key}")
+                    if key=='model' or key=='ema_model':
+                        model_value_copy = copy.deepcopy(payload['state_dicts']['ema_model']) # resume the ema value
+                        
+                        for k in value.keys():
+                            if k.endswith('experts.old_weight'):
+                                # combine with new weight
+                                model_value_copy[k]= torch.cat(
+                                    [payload['state_dicts']['ema_model'][k],
+                                    payload['state_dicts']['ema_model'][k.replace('old_weight','new_weight')]],
+                                    dim=0)
+                                del model_value_copy[k.replace('old_weight','new_weight')]
+
+                            if k.endswith('experts.old_bias'):
+                                # combine with new bias
+                                model_value_copy[k]= torch.cat(
+                                    [payload['state_dicts']['ema_model'][k],
+                                    payload['state_dicts']['ema_model'][k.replace('old_bias','new_bias')]],
+                                    dim=0)
+                                del model_value_copy[k.replace('old_bias','new_bias')]
+                            
+                            # if key end with experts.weight, rename it to experts.old_weight
+                            if k.endswith('experts.weight'):
+                                model_value_copy[k.replace('experts.weight', 'experts.old_weight')] = payload['state_dicts']['ema_model'][k]
+                                del model_value_copy[k]
+                            if k.endswith('experts.bias'):
+                                model_value_copy[k.replace('experts.bias', 'experts.old_bias')] = payload['state_dicts']['ema_model'][k]
+                                del model_value_copy[k]
+                            
+                            if k.endswith('PE') or k.endswith('PTE'):
+                                # align shape
+                                target_shape=self.__dict__[key].state_dict()[k].shape
+                                new_value=torch.zeros(target_shape)
+                                old_value=payload['state_dicts']['ema_model'][k]
+                                if k.endswith('PE'):
+                                    new_value[:old_value.shape[0]]=old_value
+                                else:
+                                    new_value[:old_value.shape[0],:old_value.shape[1]]=old_value
+                                model_value_copy[k]=new_value
+                                # del model_value_copy[k]
+                        
+                        self.__dict__[key].load_state_dict(model_value_copy, strict=False, **kwargs)
+                    else:
+                        try:
+                            self.__dict__[key].load_state_dict(value, **kwargs)
+                        except:
+                            print(f"Error in loading {key}")
+                            raise Exception
+                else:
+                    print(f"Not filtering {key}")
+                    if key=='model' or key=='ema_model':
+                        model_value_copy = copy.deepcopy(value)
+                        for k in value.keys():
+                            if k.endswith('task_moe_layer.experts.weight') \
+                            or k.endswith('task_moe_layer.experts.bias')\
+                            or k.endswith('task_moe_layer.output_experts.weight')\
+                            or k.endswith('task_moe_layer.output_experts.bias')\
+                            :
+                                del model_value_copy[k]
+                        self.__dict__[key].load_state_dict(model_value_copy,strict=True, **kwargs)
+                    else:
+                        self.__dict__[key].load_state_dict(value, **kwargs)
         for key in include_keys:
             if key in payload['pickles']:
+                if filter:
+                    continue
                 self.__dict__[key] = dill.loads(payload['pickles'][key])
     
     def load_checkpoint(self, path=None, tag='latest',
             exclude_keys=None, 
             include_keys=None, 
+            filter=False,
             **kwargs):
         if path is None:
             path = self.get_checkpoint_path(tag=tag)
@@ -97,7 +164,7 @@ class BaseWorkspace:
         payload = torch.load(path.open('rb'), pickle_module=dill, **kwargs)
         self.load_payload(payload, 
             exclude_keys=exclude_keys, 
-            include_keys=include_keys)
+            include_keys=include_keys, filter=filter)
         return payload
     
     @classmethod

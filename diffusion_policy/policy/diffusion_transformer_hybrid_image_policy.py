@@ -18,9 +18,7 @@ import robomimic.utils.obs_utils as ObsUtils
 import robomimic.models.base_nets as rmbn
 import diffusion_policy.model.vision.crop_randomizer as dmvc
 from diffusion_policy.common.pytorch_util import dict_apply, replace_submodules
-from patch_moe.encoder import MoEEncoder
-
-from patch_moe.resnet import ResNet, PatchMoeResNet
+from task_moe.moe import MoE
 import robomimic
 class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
     def __init__(self, 
@@ -28,9 +26,10 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
             noise_scheduler: DDPMScheduler,
             # task params
             horizon, 
-            n_tasks,
+            n_fixed_tasks,
             n_action_steps, 
             n_obs_steps,
+            task_id=None,
             num_inference_steps=None,
             # image
             crop_shape=(76, 76),
@@ -113,39 +112,56 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
 
         obs_encoder = policy.nets['policy'].nets['encoder'].nets['obs']
 
-        # k = [4,4,2,2]
-        # exp = [8,8,4,4]
-        # ### [16,16,8,8]
-        # patch_size = [2,2,2,2]
-        # n_blocks_list = [2,2,2,2]
-        
+        obs_encoder.obs_nets.robot0_eye_in_hand_image.nets=MoE(
+            input_size=torch.Size([3,80,80]),
+            output_size=64,
+            module=obs_encoder.obs_nets.robot0_eye_in_hand_image.nets,
+            num_experts_per_task=2,
+            k=2,
+            w_MI=0.0005, #0.0005
+            w_finetune_MI=0,
+            fixed_task_num=n_fixed_tasks,
+            noisy_gating=False,
+            task_id=task_id,
+        ) 
 
-        # obs_encoder.obs_nets.agentview_image.backbone = PatchMoeResNet(k = k, 
-        #                                                                exp = exp, 
-        #                                                                patch_size=patch_size ,
-        #                                                                n_blocks_list=n_blocks_list)
-        
-        # obs_encoder.obs_nets.robot0_eye_in_hand_image.backbone = PatchMoeResNet(k = k, 
-        #                                                                         exp = exp, 
-        #                                                                         patch_size=patch_size ,
-        #                                                                         n_blocks_list=n_blocks_list)
+        obs_encoder.obs_nets.agentview_image.nets=MoE(
+            input_size=torch.Size([3,80,80]),
+            output_size=64,
+            module=obs_encoder.obs_nets.agentview_image.nets,
+            num_experts_per_task=2,
+            k=2,
+            w_MI=0.0005, 
+            w_finetune_MI=0,
+            fixed_task_num=n_fixed_tasks,
+            noisy_gating=False,
+            task_id=task_id,
+        )
+
+                                                             
         
         
         def count_parameters(model):
                 return sum(p.numel() for p in model.parameters() if p.requires_grad)
-
+    
         # Get the number of parameters
         num_params = count_parameters(obs_encoder)
         print(f'The ob1 has {num_params/1000000} trainable parameters')
-        
+
         if obs_encoder_group_norm:
-            # replace batch norm with group norm
+            def replace_bn_with_gn(x):
+                mod=nn.GroupNorm(num_groups=x.num_features//16, num_channels=x.num_features)
+                for param_name, param in x.named_parameters():
+                    if not param.requires_grad:
+                        # set the same param in mod to not require grad
+                        mod.register_parameter(param_name, param)
+                return mod
+
+
             replace_submodules(
                 root_module=obs_encoder,
                 predicate=lambda x: isinstance(x, nn.BatchNorm2d),
-                func=lambda x: nn.GroupNorm(
-                    num_groups=x.num_features//16, 
-                    num_channels=x.num_features)
+                func= replace_bn_with_gn
             )
             
 
@@ -173,7 +189,7 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
             input_dim=input_dim,
             output_dim=output_dim,
             horizon=horizon,
-            n_tasks=n_tasks,
+            n_fixed_tasks=n_fixed_tasks,
             n_obs_steps=n_obs_steps,
             cond_dim=cond_dim,
             n_layer=n_layer,
@@ -257,7 +273,9 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
         """
         assert 'past_action' not in obs_dict # not implemented yet
         # normalize input
-        nobs = self.normalizers[task_id].normalize(obs_dict)
+        if self.normalizers[-1].device != self.device:
+            self.normalizers[-1].to(self.device)
+        nobs = self.normalizers[-1].normalize(obs_dict)
         value = next(iter(nobs.values()))
         B, To = value.shape[:2]
         T = self.horizon
@@ -402,10 +420,8 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
         noisy_trajectory[condition_mask] = trajectory[condition_mask]
         
         # Predict the noise residual
-        pred,aux_loss,probs = self.model(noisy_trajectory, timesteps, cond,task_id)
+        pred,aux_loss = self.model(noisy_trajectory, timesteps, cond,task_id)
 
-        # Convert the tensor to a NumPy array
-        probs_np = probs.detach().cpu().numpy()
 
         pred_type = self.noise_scheduler.config.prediction_type 
         if pred_type == 'epsilon':

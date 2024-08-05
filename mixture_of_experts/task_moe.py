@@ -13,25 +13,56 @@ class ParallelLinear(torch.autograd.Function):
 
     @staticmethod
     @custom_fwd #(cast_inputs=torch.float32)
-    def forward(ctx, input, expert_size, weight, bias=None):
-        output = ParallelLinear.forward_scriptable(input, expert_size, weight, bias)
+    def forward(ctx, input, expert_size, weight, bias=None, inference_experts_num=-1, inference=False):
+        
+        if inference:
+            assert inference_experts_num > 0, f'{inference_experts_num}'
+            output = ParallelLinear.inference(input, expert_size, weight, bias, inference_experts_num)
+            return output
+        output = ParallelLinear.forward_scriptable(input, expert_size, weight, bias, inference_experts_num)
         # assert torch.allclose(ParallelLinear._forward_scriptable(input, expert_size, weight, bias),  output)
         ctx.save_for_backward(input, expert_size, weight, bias)
         return output
 
     @staticmethod
     @torch.jit.script
-    def forward_scriptable(input: Tensor, expert_size: Tensor,
-                           weight: Tensor, bias: Optional[Tensor]):
+    def inference(input: Tensor, expert_size: Tensor,
+                           weight: Tensor, bias: Optional[Tensor], inference_experts_num):
         output_buf: Tensor = torch.empty((input.size(0), weight.size(2)),
                                          device=input.device, dtype=input.dtype)
+ 
+        weight = weight[: inference_experts_num]
+        
         num_linears = weight.size(0)
 
         expert_size_list: List[int] = expert_size.tolist()
         # print('expert_size: ', expert_size)
         input_list = input.split(expert_size_list, dim=0)
         output_buf_list = output_buf.split(expert_size_list)
+        # assert len(input_list) == num_linears, f'{len(input_list)} != {inference_experts_num}'
+        for i in range(len(input_list)):
+            torch.mm(input_list[i], weight[i], out=output_buf_list[i])
 
+        if bias is not None:
+            bias = bias[: inference_experts_num]
+            for i in range(len(input_list)):
+                output_buf_list[i].add_(bias[i])
+
+        output = output_buf
+        return output
+
+    @staticmethod
+    @torch.jit.script
+    def forward_scriptable(input: Tensor, expert_size: Tensor,
+                           weight: Tensor, bias: Optional[Tensor], inference_experts_num):
+        output_buf: Tensor = torch.empty((input.size(0), weight.size(2)),
+                                         device=input.device, dtype=input.dtype)
+        num_linears = weight.size(0)
+
+        expert_size_list: List[int] = expert_size.tolist()
+        
+        input_list = input.split(expert_size_list, dim=0)
+        output_buf_list = output_buf.split(expert_size_list)
         for i in range(num_linears):
             torch.mm(input_list[i], weight[i], out=output_buf_list[i])
 
@@ -82,7 +113,7 @@ class ParallelLinear(torch.autograd.Function):
         else:
             d_bias = None
 
-        return d_input, None, d_weight, d_bias
+        return d_input, None, d_weight, d_bias, None
 
 @torch.jit.script
 def compute_gating(k: int, probs: torch.Tensor, top_k_gates: torch.Tensor, top_k_indices: torch.Tensor):
@@ -99,30 +130,69 @@ def compute_gating(k: int, probs: torch.Tensor, top_k_gates: torch.Tensor, top_k
     batch_gates = top_k_gates[index_sorted_experts]
     return batch_gates, batch_index, expert_size, gates, index_sorted_experts
 class ParallelExperts(nn.Module):
-    def __init__(self, num_experts, input_size, output_size, bias=False) -> None:
+    def __init__(self, fixed_num_experts, new_num_experts, input_size, output_size, bias=False) -> None:
         super().__init__()
-        self.weight = nn.Parameter(torch.empty(num_experts, input_size, output_size))
-        if bias:
-            self.bias = nn.Parameter(torch.zeros(num_experts, output_size))
+        self.new_num_experts = new_num_experts
+        if fixed_num_experts > 0:
+            self.old_weight = nn.Parameter(torch.empty(fixed_num_experts, input_size, output_size), requires_grad=False)
         else:
-            self.bias = None
+            self.old_weight = None
+        self.new_weight = nn.Parameter(torch.empty(new_num_experts, input_size, output_size))
+        if bias:
+            if fixed_num_experts > 0:
+                self.old_bias = nn.Parameter(torch.zeros(fixed_num_experts, output_size), requires_grad=False)
+            else:
+                self.old_bias = None
+            self.new_bias = nn.Parameter(torch.zeros(new_num_experts, output_size))
+        else:
+            self.old_bias = None
+            self.new_bias = None
+
+        # self.weight = torch.cat([self.old_weight.detach(), self.new_weight.detach()], dim=0) if self.old_weight is not None else self.new_weight.detach()
+        # self.bias = torch.cat([self.old_bias.detach(), self.new_bias.detach()], dim=0) if self.old_bias is not None else self.new_bias.detach()
+        
         self.reset_parameters()
 
     def extra_repr(self):
-        return 'num_experts={}, input_size={}, output_size={}'.format(
-            self.weight.size(0), self.weight.size(1), self.weight.size(2))
+        return 'new_num_experts={}, input_size={}, output_size={}'.format(
+            self.new_weight.size(0), self.new_weight.size(1), self.new_weight.size(2))
 
     def reset_parameters(self) -> None:
         # std = math.sqrt(2.0 / float(self.weight.size(1) + self.weight.size(2)))
         # a = math.sqrt(3.0) * std
-        nn.init.uniform_(self.weight, -1. / self.weight.size(1), 1. / self.weight.size(1))
-        if self.bias is not None:
-            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight[0])
+        nn.init.uniform_(self.new_weight, -1. / self.new_weight.size(1), 1. / self.new_weight.size(1))
+        if self.new_bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.new_weight[0])
             bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
-            nn.init.uniform_(self.bias, -bound, bound)
+            nn.init.uniform_(self.new_bias, -bound, bound)
 
-    def forward(self, inputs, expert_size):
-        results = ParallelLinear.apply(inputs, expert_size, self.weight, self.bias)
+    def forward(self, inputs, expert_size, task_bh=-1):
+        # combine
+        if self.old_weight is not None:
+            self.weight = torch.cat([self.old_weight, self.new_weight], dim=0)
+        else:
+            self.weight = self.new_weight
+        if self.new_bias is not None:
+            if self.old_bias is not None:
+                self.bias = torch.cat([self.old_bias, self.new_bias], dim=0)
+            else:
+                self.bias = self.new_bias
+        else:
+            self.bias = None
+        # print('expert_size: ', expert_size)
+        if self.training:
+            inference_experts_num =-1
+        else:
+            if task_bh == -1:
+                inference_experts_num = self.weight.size(0)
+            else:
+                inference_experts_num = (task_bh+1)*self.new_num_experts
+        if self.training:
+            results = ParallelLinear.apply(inputs, expert_size, self.weight, self.bias, inference_experts_num)
+        else:
+            # print(f"Using the 0-{inference_experts_num} experts")
+            inference_experts_num = inference_experts_num.item()
+            results = ParallelLinear.apply(inputs, expert_size, self.weight, self.bias, inference_experts_num, True)
         return results
 
 
@@ -147,7 +217,7 @@ class MoE(nn.Module):
         super(MoE, self).__init__()
 
         self.noisy_gating = noisy_gating
-        self.num_experts = num_experts
+        self.num_experts = num_experts 
         self.input_size = input_size
         self.head_size = head_size
         self.bias = bias
@@ -430,7 +500,7 @@ class MoE(nn.Module):
         return y
 
 
-class TaskMoE(MoE):
+class TaskMoE(nn.Module):
 
     """Call a Sparsely gated mixture of experts layer with 1-layer Feed-Forward networks as experts.
     Args:
@@ -442,50 +512,103 @@ class TaskMoE(MoE):
     k: an integer - how many experts to use for each batch element
     """
 
-    def __init__(self,  input_size, head_size, num_experts, k, w_MI=0, w_H=0, w_finetune_MI=0, limit_k=0, w_topk_loss=0.0, task_num=9, noisy_gating=True, gating_activation=None, **kwargs):
-        self.task_num = task_num
+    def __init__(self,  input_size, head_size, num_experts_per_task, k, w_MI=0, w_H=0, w_finetune_MI=0, limit_k=0, w_topk_loss=0.0, fixed_task_num=9, noisy_gating=True, gating_activation=None, **kwargs):
+        super(TaskMoE, self).__init__()
+        self.fixed_task_num = fixed_task_num
         self.w_topk_loss = w_topk_loss
         self.w_MI = w_MI
         self.w_H = w_H
         self.w_finetune_MI = w_finetune_MI
 
         self.limit_k = max(k, limit_k)
-
-        super(TaskMoE, self).__init__(input_size, head_size, num_experts, k, noisy_gating=noisy_gating, gating_activation=gating_activation, **kwargs)
+        if fixed_task_num > 0:
+            self.new_num_experts = num_experts_per_task
+            self.experts = ParallelExperts(fixed_task_num * num_experts_per_task , self.new_num_experts, input_size, head_size, bias=True)
+            self.output_experts = ParallelExperts(fixed_task_num * num_experts_per_task, self.new_num_experts, head_size, input_size, bias=True)
+        else:
+            self.new_num_experts = num_experts_per_task
+            self.experts = ParallelExperts(0,self.new_num_experts, input_size, head_size, bias=True)
+            self.output_experts = ParallelExperts(0, self.new_num_experts, head_size, input_size, bias=True)
+        # super(TaskMoE, self).__init__(input_size, head_size, num_experts+self.new_num_experts, k, noisy_gating=noisy_gating, gating_activation=gating_activation, **kwargs)
+        
+        self.num_experts = fixed_task_num * num_experts_per_task + self.new_num_experts
+        self.input_size = input_size
+        self.head_size = head_size
+        self.bias = True
+        self.k = min(k, self.num_experts)
+        self.activation = kwargs.get('activation', None)
+        self.noisy_gating = noisy_gating
+        
         
         if gating_activation is None:
             gating_activation = nn.GELU()
 
-
+        
         if w_finetune_MI < -100: ## hack
             w_finetune_MI = 0
             self.w_finetune_MI = 0
-            self.f_gate = nn.ModuleList([nn.Sequential(
-                                                nn.Linear(input_size,
-                                                      2 * num_experts if noisy_gating else num_experts,
-                                                      bias=False)
-                                        ) for i in range(task_num)])
+            
+            
+            if fixed_task_num>0:
+                self.f_gate = nn.ModuleList([nn.Sequential(
+                                                    nn.Linear(input_size,
+                                                        2 * ((i+1)*num_experts_per_task) if noisy_gating else ((i+1)*num_experts_per_task),
+                                                        bias=False)
+                                            ) for i in range(fixed_task_num)])
+                self.f_gate.append(nn.Sequential(
+                                                    nn.Linear(input_size,
+                                                        2 * (self.num_experts) if noisy_gating else self.num_experts,
+                                                        bias=False)
+                                            ))
+            else:
+                self.f_gate = nn.ModuleList([nn.Sequential(
+                                                    nn.Linear(input_size,
+                                                        2 * (self.num_experts) if noisy_gating else self.num_experts,
+                                                        bias=False)
+                                            )])
         else:
-            self.f_gate = nn.ModuleList([nn.Sequential(
+            if fixed_task_num>0:
+                self.f_gate = nn.ModuleList([nn.Sequential(
+                                                nn.Linear(input_size, input_size//4),
+                                                gating_activation,
+                                                nn.Linear(input_size//4,
+                                                        2 * ((i+1)*num_experts_per_task) if noisy_gating else ((i+1)*num_experts_per_task),
+                                                        bias=True)
+                                            ) for i in range(fixed_task_num)])
+                self.f_gate.append(nn.Sequential(
                                             nn.Linear(input_size, input_size//4),
                                             gating_activation,
                                             nn.Linear(input_size//4,
-                                                      2 * num_experts if noisy_gating else num_experts,
+                                                      2 * (self.num_experts) if noisy_gating else (self.num_experts),
                                                       bias=True)
-                                        ) for i in range(task_num)])
+                                        ))
+            else:
+                self.f_gate = nn.ModuleList([nn.Sequential(
+                                            nn.Linear(input_size, input_size//4),
+                                            gating_activation,
+                                            nn.Linear(input_size//4,
+                                                      2 * (self.num_experts) if noisy_gating else (self.num_experts),
+                                                      bias=True)
+                                        )])
 
-        for i in range(task_num):
-            nn.init.zeros_(self.f_gate[i][-1].weight)
+        task_num = self.fixed_task_num + 1
+        # for i in range(task_num):
+        nn.init.zeros_(self.f_gate[-1][-1].weight)
+        # frozen all the weights except the last layer
+        if self.fixed_task_num > 0:
+            for i in range(self.fixed_task_num):
+                for param in self.f_gate[i].parameters():
+                    param.requires_grad = False
 
-        self.register_buffer('PTE', torch.zeros(self.task_num, self.num_experts))
+        self.register_buffer('PTE', torch.zeros(1, self.num_experts))
         self.register_buffer('PE', torch.zeros(self.num_experts))
         self.momentum = 0.0
         self.register_buffer('times',torch.zeros(1))
         # self.times = 0
 
-        self.task_gate_freq = [0] * self.task_num
-        self.topk_acc_probs = [0] * self.task_num
-        self.token_probs = [0] * self.task_num
+        self.task_gate_freq = [0] * 1
+        self.topk_acc_probs = [0] * 1
+        self.token_probs = [0] * 1
 
     def get_MIloss(self, logits, probs, gates, task_bh):
 
@@ -494,12 +617,12 @@ class TaskMoE(MoE):
 
         top_k_gates, _ = probs.topk(self.k, dim=1)
         self.token_probs[task_bh] = self.token_probs[task_bh] * 0.95 + top_k_gates.mean(0).detach()*0.05
-
+        # print(gates.shape)
         self.task_gate_freq[task_bh] = self.task_gate_freq[task_bh]*0.95 + ((gates > 0).float().sum(0)).detach()*0.05
-
+        # print(self.task_gate_freq)
         self.topk_acc_probs[task_bh] = self.topk_acc_probs[task_bh]*0.95 + (probs.mean(0)).detach()*0.05
         
-        PT = 1 / self.task_num # since we want each task to have equal weight
+        PT = 1 / 1 # since we want each task to have equal weight
 
         # probs = P(E|T) in this batch
         # P(T,E) = P(E|T) * P(T) 
@@ -522,7 +645,7 @@ class TaskMoE(MoE):
         PE = self.PTE.sum(0).detach()
 
         # P(E,T) in this batch
-        MI_task_gate = torch.zeros(self.task_num, self.num_experts).cuda()
+        MI_task_gate = torch.zeros(1, self.num_experts).cuda()
         MI_task_gate[task_bh] = MI_task_gate[task_bh] + probs.mean(0) * PT
 
         # P(E) in this batch
@@ -559,6 +682,7 @@ class TaskMoE(MoE):
             gates: a Tensor with shape [batch_size, num_experts]
             load: a Tensor with shape [num_experts]
         """
+        
         clean_logits = self.f_gate[task_bh](x)
         # if self.noisy_gating and self.training:
         if self.noisy_gating:
@@ -573,18 +697,6 @@ class TaskMoE(MoE):
             logits = clean_logits
 
         probs = torch.softmax(logits, dim=1) + 1e-4
-
-        # # Convert the tensor to a NumPy array
-        # probs_np = probs.detach().cpu().numpy()
-
-        # # Specify the path to save the .npy file
-        # path = '/project_data/ramanan/pengliaj/sparse-diffusion-policy-8experts/sparse-diffusion-policy-master-1/probs.npy'
-
-        # # Save the array to a .npy file
-        # np.save(path, probs_np)
-
-        # print(f"Probabilities saved to {path}")
-        
         if skip_mask is not None:
             probs = torch.masked_fill(probs, skip_mask, 0)
 
@@ -605,7 +717,7 @@ class TaskMoE(MoE):
 
        # top_k_indecis: [batch, K]
        
-
+        
         top_k_gates = top_k_gates
 
         batch_gates, batch_index, expert_size, gates, index_sorted_experts = \
@@ -614,11 +726,12 @@ class TaskMoE(MoE):
         # print('here: ', expert_size)
         # print('probs: ', probs)
         # print('x: ', x)
+        # exit()
         self.index_sorted_experts = index_sorted_experts
         self.batch_index = batch_index
         self.batch_gates = batch_gates
 
-        return self.get_MIloss(logits, probs, gates, task_bh),probs
+        return self.get_MIloss(logits, probs, gates, task_bh)
 
     def forward(self, x, task_bh, skip_mask=None, sample_topk=0, multiply_by_gates=True):
         # y_ = self.forward_(x, skip_mask, sample_topk, multiply_by_gates)
@@ -628,12 +741,15 @@ class TaskMoE(MoE):
         x = x.reshape(-1, emb_size)
         if skip_mask is not None:
             skip_mask = skip_mask.view(-1, 1)
-        loss,probs = self.top_k_gating(x, task_bh, skip_mask,  sample_topk=sample_topk)
-
+        loss = self.top_k_gating(x, task_bh, skip_mask,  sample_topk=sample_topk)
+        
         expert_inputs = x[self.batch_index]
-        h = self.experts(expert_inputs, self.expert_size)
+        
+        h = self.experts(expert_inputs, self.expert_size, task_bh)
         h = self.activation(h)
-        expert_outputs = self.output_experts(h, self.expert_size)
+        
+
+        expert_outputs = self.output_experts(h, self.expert_size, task_bh)
 
         if multiply_by_gates:
             expert_outputs = expert_outputs * self.batch_gates[:, None]
@@ -644,8 +760,8 @@ class TaskMoE(MoE):
         y = y.view(bsz, length, self.input_size)
         # y = y.view(bsz,self.input_size,length)
         # assert torch.allclose(y, y_)
-        # print('y: ', y)
-        return y, loss,probs
+        
+        return y, loss
 
     def forward_(self, x, task_bh, skip_mask=None, sample_topk=0, multiply_by_gates=True):
         # FOR DEBUGGING: naive forward
@@ -719,9 +835,10 @@ if __name__ == '__main__':
   batch_size = 3
   sequence_length = 10
   input_size = 20
-  model = TaskMoE(input_size=20,head_size=10,num_experts=5,k=2,activation=nn.Sequential(
+  model = TaskMoE(input_size=20,head_size=10,num_experts_per_task=8,k=2,activation=nn.Sequential(
                         nn.GELU(),
-                    ),noisy_gating=False)
+                    ),noisy_gating=False,fixed_task_num=3,acc_aux_loss=True)
+  model.eval()
   input_data = torch.randn(batch_size, sequence_length, input_size)
 
   # Specify the task or task batch you want to perform inference for.
@@ -733,4 +850,9 @@ if __name__ == '__main__':
 
   # Perform inference (forward pass) using the TaskMoE model for the specified task.
   output, loss = model(input_data, task_batch_index, skip_mask=skip_mask)
+  print(model)
   print(output.shape)
+  for name, param in model.named_parameters():
+    print(name, param.shape, param.requires_grad)
+
+
