@@ -62,8 +62,8 @@ policy:
   n_action_steps: 8
   n_cond_layers: 0
   n_emb: 512
-  n_head: 4
-  n_layer: 8
+  n_head: 8
+  n_layer: 12
   n_obs_steps: 2
   n_tasks: 8
   noise_scheduler:
@@ -138,7 +138,7 @@ task0:
   dataset:
     _target_: diffusion_policy.dataset.robomimic_replay_image_dataset.RobomimicReplayImageDataset
     abs_action: false
-    dataset_path: /mnt/hdd1/yixiao/robomimic/core/square_d0.hdf5
+    dataset_path: /media/hdd/yixiao/mimicgen/datasets/core/square_d0.hdf5
     horizon: 10
     n_obs_steps: 2
     pad_after: 7
@@ -173,12 +173,12 @@ task0:
           - 2
     use_cache: true
     val_ratio: 0.02
-  dataset_path: /mnt/hdd1/yixiao/robomimic/core/square_d0.hdf5
+  dataset_path: /media/hdd/yixiao/mimicgen/datasets/core/square_d0.hdf5
   env_runner:
     _target_: diffusion_policy.env_runner.robomimic_image_runner.RobomimicImageRunner
     abs_action: false
     crf: 22
-    dataset_path: /mnt/hdd1/yixiao/robomimic/core/square_d0.hdf5
+    dataset_path: /media/hdd/yixiao/mimicgen/datasets/core/square_d0.hdf5
     fps: 10
     max_steps: 400
     n_action_steps: 8
@@ -252,7 +252,7 @@ task1:
   dataset:
     _target_: diffusion_policy.dataset.robomimic_replay_image_dataset.RobomimicReplayImageDataset
     abs_action: false
-    dataset_path: /mnt/hdd1/yixiao/robomimic/core/stack_d0.hdf5
+    dataset_path: /media/hdd/yixiao/mimicgen/datasets/core/stack_d0.hdf5
     horizon: 10
     n_obs_steps: 2
     pad_after: 7
@@ -287,12 +287,12 @@ task1:
           - 2
     use_cache: true
     val_ratio: 0.02
-  dataset_path: /mnt/hdd1/yixiao/robomimic/core/stack_d0.hdf5
+  dataset_path: /media/hdd/yixiao/mimicgen/datasets/core/stack_d0.hdf5
   env_runner:
     _target_: diffusion_policy.env_runner.robomimic_image_runner.RobomimicImageRunner
     abs_action: false
     crf: 22
-    dataset_path: /mnt/hdd1/yixiao/robomimic/core/stack_d0.hdf5
+    dataset_path: /media/hdd/yixiao/mimicgen/datasets/core/stack_d0.hdf5
     fps: 10
     max_steps: 400
     n_action_steps: 8
@@ -366,7 +366,7 @@ task2:
   dataset:
     _target_: diffusion_policy.dataset.robomimic_replay_image_dataset.RobomimicReplayImageDataset
     abs_action: false
-    dataset_path: /mnt/hdd1/yixiao/robomimic/core/coffee_d0.hdf5
+    dataset_path: /media/hdd/yixiao/mimicgen/datasets/core/coffee_d0.hdf5
     horizon: 10
     n_obs_steps: 2
     pad_after: 7
@@ -401,12 +401,12 @@ task2:
           - 2
     use_cache: true
     val_ratio: 0.02
-  dataset_path: /mnt/hdd1/yixiao/robomimic/core/coffee_d0.hdf5
+  dataset_path: /media/hdd/yixiao/mimicgen/datasets/core/coffee_d0.hdf5
   env_runner:
     _target_: diffusion_policy.env_runner.robomimic_image_runner.RobomimicImageRunner
     abs_action: false
     crf: 22
-    dataset_path: /mnt/hdd1/yixiao/robomimic/core/coffee_d0.hdf5
+    dataset_path: /media/hdd/yixiao/mimicgen/datasets/core/coffee_d0.hdf5
     fps: 10
     max_steps: 400
     n_action_steps: 8
@@ -480,7 +480,7 @@ task3:
   dataset:
     _target_: diffusion_policy.dataset.robomimic_replay_image_dataset.RobomimicReplayImageDataset
     abs_action: false
-    dataset_path: /mnt/hdd1/yixiao/robomimic/core/hammer_cleanup_d0.hdf5
+    dataset_path: /media/hdd/yixiao/mimicgen/datasets/core/hammer_cleanup_d0.hdf5
     horizon: 10
     n_obs_steps: 2
     pad_after: 7
@@ -515,12 +515,12 @@ task3:
           - 2
     use_cache: true
     val_ratio: 0.02
-  dataset_path: /mnt/hdd1/yixiao/robomimic/core/hammer_cleanup_d0.hdf5
+  dataset_path: /media/hdd/yixiao/mimicgen/datasets/core/hammer_cleanup_d0.hdf5
   env_runner:
     _target_: diffusion_policy.env_runner.robomimic_image_runner.RobomimicImageRunner
     abs_action: false
     crf: 22
-    dataset_path: /mnt/hdd1/yixiao/robomimic/core/hammer_cleanup_d0.hdf5
+    dataset_path: /media/hdd/yixiao/mimicgen/datasets/core/hammer_cleanup_d0.hdf5
     fps: 10
     max_steps: 400
     n_action_steps: 8
@@ -594,7 +594,7 @@ task4:
   dataset:
     _target_: diffusion_policy.dataset.robomimic_replay_image_dataset.RobomimicReplayImageDataset
     abs_action: false
-    dataset_path: /mnt/hdd1/yixiao/robomimic/core/mug_cleanup_d0.hdf5
+    dataset_path: /media/hdd/yixiao/mimicgen/datasets/core/mug_cleanup_d0.hdf5
     horizon: 10
     n_obs_steps: 2
     pad_after: 7
@@ -629,12 +629,12 @@ task4:
           - 2
     use_cache: true
     val_ratio: 0.02
-  dataset_path: /mnt/hdd1/yixiao/robomimic/core/mug_cleanup_d0.hdf5
+  dataset_path: /media/hdd/yixiao/mimicgen/datasets/core/mug_cleanup_d0.hdf5
   env_runner:
     _target_: diffusion_policy.env_runner.robomimic_image_runner.RobomimicImageRunner
     abs_action: false
     crf: 22
-    dataset_path: /mnt/hdd1/yixiao/robomimic/core/mug_cleanup_d0.hdf5
+    dataset_path: /media/hdd/yixiao/mimicgen/datasets/core/mug_cleanup_d0.hdf5
     fps: 10
     max_steps: 400
     n_action_steps: 8
@@ -708,7 +708,7 @@ task5:
   dataset:
     _target_: diffusion_policy.dataset.robomimic_replay_image_dataset.RobomimicReplayImageDataset
     abs_action: false
-    dataset_path: /mnt/hdd1/yixiao/robomimic/core/nut_assembly_d0.hdf5
+    dataset_path: /media/hdd/yixiao/mimicgen/datasets/core/nut_assembly_d0.hdf5
     horizon: 10
     n_obs_steps: 2
     pad_after: 7
@@ -743,12 +743,12 @@ task5:
           - 2
     use_cache: true
     val_ratio: 0.02
-  dataset_path: /mnt/hdd1/yixiao/robomimic/core/nut_assembly_d0.hdf5
+  dataset_path: /media/hdd/yixiao/mimicgen/datasets/core/nut_assembly_d0.hdf5
   env_runner:
     _target_: diffusion_policy.env_runner.robomimic_image_runner.RobomimicImageRunner
     abs_action: false
     crf: 22
-    dataset_path: /mnt/hdd1/yixiao/robomimic/core/nut_assembly_d0.hdf5
+    dataset_path: /media/hdd/yixiao/mimicgen/datasets/core/nut_assembly_d0.hdf5
     fps: 10
     max_steps: 400
     n_action_steps: 8
@@ -822,7 +822,7 @@ task6:
   dataset:
     _target_: diffusion_policy.dataset.robomimic_replay_image_dataset.RobomimicReplayImageDataset
     abs_action: false
-    dataset_path: /mnt/hdd1/yixiao/robomimic/core/stack_three_d0.hdf5
+    dataset_path: /media/hdd/yixiao/mimicgen/datasets/core/stack_three_d0.hdf5
     horizon: 10
     n_obs_steps: 2
     pad_after: 7
@@ -857,12 +857,12 @@ task6:
           - 2
     use_cache: true
     val_ratio: 0.02
-  dataset_path: /mnt/hdd1/yixiao/robomimic/core/stack_three_d0.hdf5
+  dataset_path: /media/hdd/yixiao/mimicgen/datasets/core/stack_three_d0.hdf5
   env_runner:
     _target_: diffusion_policy.env_runner.robomimic_image_runner.RobomimicImageRunner
     abs_action: false
     crf: 22
-    dataset_path: /mnt/hdd1/yixiao/robomimic/core/stack_three_d0.hdf5
+    dataset_path: /media/hdd/yixiao/mimicgen/datasets/core/stack_three_d0.hdf5
     fps: 10
     max_steps: 400
     n_action_steps: 8
@@ -936,7 +936,7 @@ task7:
   dataset:
     _target_: diffusion_policy.dataset.robomimic_replay_image_dataset.RobomimicReplayImageDataset
     abs_action: false
-    dataset_path: /mnt/hdd1/yixiao/robomimic/core/threading_d0.hdf5
+    dataset_path: /media/hdd/yixiao/mimicgen/datasets/core/threading_d0.hdf5
     horizon: 10
     n_obs_steps: 2
     pad_after: 7
@@ -971,12 +971,12 @@ task7:
           - 2
     use_cache: true
     val_ratio: 0.02
-  dataset_path: /mnt/hdd1/yixiao/robomimic/core/threading_d0.hdf5
+  dataset_path: /media/hdd/yixiao/mimicgen/datasets/core/threading_d0.hdf5
   env_runner:
     _target_: diffusion_policy.env_runner.robomimic_image_runner.RobomimicImageRunner
     abs_action: false
     crf: 22
-    dataset_path: /mnt/hdd1/yixiao/robomimic/core/threading_d0.hdf5
+    dataset_path: /media/hdd/yixiao/mimicgen/datasets/core/threading_d0.hdf5
     fps: 10
     max_steps: 400
     n_action_steps: 8
@@ -1048,22 +1048,22 @@ task7:
 task_name: multi-task
 task_num: 8
 training:
-  checkpoint_every: 50
+  checkpoint_every: 25
   debug: false
   device: cuda:0
-  gradient_accumulate_every: 1
+  gradient_accumulate_every: 4
   lr_scheduler: cosine
   lr_warmup_steps: 100
   max_train_steps: null
   max_val_steps: null
-  num_epochs: 3500
+  num_epochs: 500
   resume: false
-  rollout_every: 50
-  sample_every: 50
+  rollout_every: 10000
+  sample_every: 10000
   seed: 42
   tqdm_interval_sec: 1.0
   use_ema: true
-  val_every: 10
+  val_every: 10000
 val_dataloader:
   batch_size: 64
   num_workers: 1

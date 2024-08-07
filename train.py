@@ -36,14 +36,14 @@ def main(cfg: OmegaConf):
     workspace.run()
 
 if __name__ == "__main__":
-    os.environ["CUDA_VISIBLE_DEVICES"]='2,'
+    os.environ["CUDA_VISIBLE_DEVICES"]='0,'
     os.environ["MUJOCO_GL"]="osmesa"
     from utils.recursive_yaml import read_yaml, write_yaml
 
-    parser = ArgumentParser()
-    parser.add_argument('--config', type=str, required=True)    
-    args = parser.parse_args()
+    # parser = ArgumentParser()
+    # parser.add_argument('--config', type=str, required=True)    
+    # args = parser.parse_args()
     
-    data = read_yaml('config/'+args.config+'.yaml')
+    data = read_yaml('config/multitask_d.yaml')
     write_yaml(data, 'config/tmp/full.yaml')
     main()

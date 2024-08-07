@@ -32,6 +32,7 @@ from typing import List
 from diffusion_policy.dataset.multitask_dataset import MultiDataLoader
 from itertools import zip_longest
 import psutil
+import mimicgen
 OmegaConf.register_new_resolver("eval", eval, replace=True)
 
 class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
@@ -63,15 +64,17 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
     def run(self):
         cfg = copy.deepcopy(self.cfg)
 
+        lastest_ckpt_path = pathlib.Path("/home/yixiao/projects/sdp/SDP/outputs/2024-08-06/20-21-25/checkpoints/latest.ckpt")
+        self.load_checkpoint(path=lastest_ckpt_path)
         # resume training
-        if cfg.training.resume:   
-            lastest_ckpt_path = pathlib.Path("")
-            if lastest_ckpt_path.is_file():
-                print(f"Resuming from checkpoint {lastest_ckpt_path}")
-                self.load_checkpoint(path=lastest_ckpt_path)
+        # if cfg.training.resume:   
+        #     lastest_ckpt_path = pathlib.Path("/home/yixiao/projects/sdp/SDP/outputs/2024-08-06/20-21-25/checkpoints/latest.ckpt")
+        #     if lastest_ckpt_path.is_file():
+        #         print(f"Resuming from checkpoint {lastest_ckpt_path}")
+        #         self.load_checkpoint(path=lastest_ckpt_path)
 
-        mem=psutil.virtual_memory()
-        print('before current available memory is' +' : '+ str(round(mem.used/1024**2)) +' MIB')
+        # mem=psutil.virtual_memory()
+        # print('before current available memory is' +' : '+ str(round(mem.used/1024**2)) +' MIB')
         # configure dataset
         datasets: List[BaseImageDataset] = []
         for i in range(cfg.task_num):
@@ -89,8 +92,8 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
         multi_traindataloader=MultiDataLoader(train_dataloaders)
         multi_traindataloader.get_memory_usage()
         
-        mem=psutil.virtual_memory()
-        print('after current available memory is' +' : '+ str(round(mem.used/1024**2)) +' MIB')
+        # mem=psutil.virtual_memory()
+        # print('after current available memory is' +' : '+ str(round(mem.used/1024**2)) +' MIB')
         # exit()
         # configure validation dataset
         val_datasets=[]
@@ -103,6 +106,8 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
 
 
         self.model.set_normalizer(normalizers)
+        
+        
         if cfg.training.use_ema:
             self.ema_model.set_normalizer(normalizers)
 
@@ -258,6 +263,7 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                 # run rollout
                 runner_logs = []
                 if ((self.epoch+1) % cfg.training.rollout_every) == 0:
+                    
                     for i in range(cfg.task_num):
                         env_runner = hydra.utils.instantiate(cfg[f'task{i}'].env_runner, output_dir=self.output_dir)
                         runner_log = env_runner.run(policy,task_id=torch.tensor([i], dtype=torch.int64).to(device))
@@ -265,6 +271,8 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                         runner_logs.append(runner_log)
                     for runner_log in runner_logs:
                         step_log.update(runner_log)
+                        
+                    
                 env_runner = None
                 # run validation
                 if (self.epoch % cfg.training.val_every) == 0:
@@ -311,32 +319,36 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                             del mse
                 
                 # checkpoint
+                self.save_checkpoint()
+                
                 if (self.epoch % cfg.training.checkpoint_every) == 0:
-                    # checkpointing
-                    if cfg.checkpoint.save_last_ckpt:
-                        self.save_checkpoint()
-                    if cfg.checkpoint.save_last_snapshot:
-                        self.save_snapshot()
-
-                    # sanitize metric names
-                    metric_dict = dict()
-                    for key, value in step_log.items():
-                        new_key = key.replace('/', '_')
-                        metric_dict[new_key] = value
-                    sum=0
-                    for key in metric_dict.keys():
-                        # if start with cfg.checkpoint.topk.monitor_key, then sum up
-                        if key.startswith(cfg.checkpoint.topk.monitor_key):
-                            sum+=metric_dict[key]
-                    metric_dict[cfg.checkpoint.topk.monitor_key] = sum
+                    self.save_checkpoint(tag = str(self.epoch))
                     
-                    # We can't copy the last checkpoint here
-                    # since save_checkpoint uses threads.
-                    # therefore at this point the file might have been empty!
-                    topk_ckpt_path = topk_manager.get_ckpt_path(metric_dict)
+                    # # checkpointing
+                    # if cfg.checkpoint.save_last_ckpt:
+                    #     self.save_checkpoint()
+                    # if cfg.checkpoint.save_last_snapshot:
+                    #     self.save_snapshot()
 
-                    if topk_ckpt_path is not None:
-                        self.save_checkpoint(path=topk_ckpt_path)
+                    # # sanitize metric names
+                    # metric_dict = dict()
+                    # for key, value in step_log.items():
+                    #     new_key = key.replace('/', '_')
+                    #     metric_dict[new_key] = value
+                    # sum=0
+                    # for key in metric_dict.keys():
+                    #     # if start with cfg.checkpoint.topk.monitor_key, then sum up
+                    #     if key.startswith(cfg.checkpoint.topk.monitor_key):
+                    #         sum+=metric_dict[key]
+                    # metric_dict[cfg.checkpoint.topk.monitor_key] = sum
+                    
+                    # # We can't copy the last checkpoint here
+                    # # since save_checkpoint uses threads.
+                    # # therefore at this point the file might have been empty!
+                    # topk_ckpt_path = topk_manager.get_ckpt_path(metric_dict)
+
+                    # if topk_ckpt_path is not None:
+                    #     self.save_checkpoint(path=topk_ckpt_path)
                 # ========= eval end for this epoch ==========
                 policy.train()
 

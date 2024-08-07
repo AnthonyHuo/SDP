@@ -109,14 +109,16 @@ class TransformerDecoderLayer(nn.Module):
         self.multihead_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout, batch_first=batch_first,
                                                  **factory_kwargs)
         # Implementation of Feedforward model
-        self.linear1 = nn.Linear(d_model, dim_feedforward, **factory_kwargs)
-        self.dropout = nn.Dropout(dropout)
-        self.linear2 = nn.Linear(dim_feedforward, d_model, **factory_kwargs)
+        
+        # self.linear1 = nn.Linear(d_model, dim_feedforward, **factory_kwargs)
+        # self.dropout = nn.Dropout(dropout)
+        # self.linear2 = nn.Linear(dim_feedforward, d_model, **factory_kwargs)
+        
         self.task_moe_layer = TaskMoE(
             input_size = d_model,
-            head_size = dim_feedforward // 16,
-            num_experts = 16,
-            k = 8,
+            head_size = dim_feedforward // 8,
+            num_experts = 8,
+            k = 4,
             bias=True,
             acc_aux_loss=True,
             w_MI=0.0005, #0.0005

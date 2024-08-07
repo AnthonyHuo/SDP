@@ -63,8 +63,8 @@ policy:
   n_action_steps: 8
   n_cond_layers: 0
   n_emb: 512
-  n_head: 4
-  n_layer: 8
+  n_head: 8
+  n_layer: 12
   n_obs_steps: 2
   noise_scheduler:
     _target_: diffusers.schedulers.scheduling_ddpm.DDPMScheduler
@@ -135,22 +135,22 @@ shape_meta:
       - 2
 task_name: multi-task
 training:
-  checkpoint_every: 50
+  checkpoint_every: 25
   debug: false
   device: cuda:0
-  gradient_accumulate_every: 1
+  gradient_accumulate_every: 4
   lr_scheduler: cosine
   lr_warmup_steps: 100
   max_train_steps: null
   max_val_steps: null
-  num_epochs: 3500
+  num_epochs: 500
   resume: false
-  rollout_every: 50
-  sample_every: 50
+  rollout_every: 10000
+  sample_every: 10000
   seed: 42
   tqdm_interval_sec: 1.0
   use_ema: true
-  val_every: 10
+  val_every: 10000
 val_dataloader:
   batch_size: 64
   num_workers: 1
