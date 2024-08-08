@@ -72,8 +72,8 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
         if_eval = False
 
 
-        lastest_ckpt_path = pathlib.Path("/home/yixiao/projects/sdp/SDP/outputs/2024-08-06/23-16-19/checkpoints/latest.ckpt")
-        self.load_checkpoint(path=lastest_ckpt_path)
+        # lastest_ckpt_path = pathlib.Path("/home/yixiao/projects/sdp/SDP/outputs/2024-08-06/23-16-19/checkpoints/latest.ckpt")
+        # self.load_checkpoint(path=lastest_ckpt_path)
         # resume training
         # if cfg.training.resume:   
         #     lastest_ckpt_path = pathlib.Path("/home/yixiao/projects/sdp/SDP/outputs/2024-08-06/20-21-25/checkpoints/latest.ckpt")

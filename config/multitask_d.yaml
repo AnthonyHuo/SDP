@@ -138,12 +138,12 @@ training:
   checkpoint_every: 25
   debug: false
   device: cuda:0
-  gradient_accumulate_every: 4
+  gradient_accumulate_every: 8
   lr_scheduler: cosine
   lr_warmup_steps: 100
   max_train_steps: null
   max_val_steps: null
-  num_epochs: 500
+  num_epochs: 300
   resume: false
   rollout_every: 10000
   sample_every: 10000
@@ -158,15 +158,15 @@ val_dataloader:
   pin_memory: true
   shuffle: false
 
-task_num: 8
-task0: !include "config/tasks/square_d0.yaml" #2334
-task1: !include "config/tasks/stack_d0.yaml" #1632
-task2: !include "config/tasks/coffee_d0.yaml" #3402
-task3: !include "config/tasks/hammer_cleanup_d0.yaml" #4356
-task4: !include "config/tasks/mug_cleanup_d0.yaml" #5162
-task5: !include "config/tasks/nut_assembly_d0.yaml" #5476
-task6: !include "config/tasks/stack_three_d0.yaml" #3888
-task7: !include "config/tasks/threading_d0.yaml" #3424
+# task_num: 8
+# task0: !include "config/tasks/square_d0.yaml" #2334
+# task1: !include "config/tasks/stack_d0.yaml" #1632
+# task2: !include "config/tasks/coffee_d0.yaml" #3402
+# task3: !include "config/tasks/hammer_cleanup_d0.yaml" #4356
+# task4: !include "config/tasks/mug_cleanup_d0.yaml" #5162
+# task5: !include "config/tasks/nut_assembly_d0.yaml" #5476
+# task6: !include "config/tasks/stack_three_d0.yaml" #3888
+# task7: !include "config/tasks/threading_d0.yaml" #3424
 
 
 # task0: !include "config/tasks/hammer_cleanup_d0.yaml" #4356
@@ -174,3 +174,8 @@ task7: !include "config/tasks/threading_d0.yaml" #3424
 # task2: !include "config/tasks/nut_assembly_d0.yaml" #5476
 # task3: !include "config/tasks/stack_three_d0.yaml" #3888
 # task4: !include "config/tasks/threading_d0.yaml" #3424
+
+task_num: 2
+# task0: !include "config/tasks/nut_assembly_d0.yaml" #5476
+task0: !include "config/tasks/stack_three_d0.yaml" #3888
+task1: !include "config/tasks/threading_d0.yaml" #3424
