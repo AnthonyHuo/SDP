@@ -70,6 +70,12 @@ class RobomimicImageRunner(BaseImageRunner):
         if n_envs is None:
             n_envs = n_train + n_test
 
+        # print('*'*20)
+        # print(n_train, n_test, n_envs)
+        # exit()
+        n_train = 3
+        n_test = 25
+        n_envs = 14
         # assert n_obs_steps <= n_action_steps
         dataset_path = os.path.expanduser(dataset_path)
         robosuite_fps = 20
