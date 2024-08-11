@@ -368,8 +368,14 @@ class TransformerForDiffusion(ModuleAttrMixin):
             self.memory_mask = None
 
         # decoder head
-        self.ln_f = nn.LayerNorm(n_emb)
-        self.head = nn.Linear(n_emb, output_dim)
+        # self.head_n_experts = 8
+        # self.head_k = 1
+        # self.head_gate = nn.ModuleList([nn.Linear(n_emb, self.head_n_experts) for _ in range(n_tasks)])
+        self.ln_f = nn.ModuleList([nn.LayerNorm(n_emb) for _ in range(n_tasks)])
+        self.head = nn.ModuleList([nn.Linear(n_emb, output_dim) for _ in range(n_tasks)])
+
+        # self.ln_f = nn.LayerNorm(n_emb)
+        # self.head = nn.Linear(n_emb, output_dim)
             
         # constants
         self.T = T
@@ -574,8 +580,9 @@ class TransformerForDiffusion(ModuleAttrMixin):
             )
             # (B,T,n_emb)
         
-        x = self.ln_f(x)
-        x = self.head(x)
+        x = self.ln_f[task_id](x)
+        x = self.head[task_id](x)
+
         # (B,T,n_out)
         return x,loss,probs
 
