@@ -283,6 +283,9 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
                 shape = (B, self.n_action_steps, Da)
             cond_data = torch.zeros(size=shape, device=device, dtype=dtype)
             cond_mask = torch.zeros_like(cond_data, dtype=torch.bool)
+            # print('.'*20)
+            # print(cond_data.shape)
+            # print(cond_mask)
         else:
             # condition through impainting
             this_nobs = dict_apply(nobs, lambda x: x[:,:To,...].reshape(-1,*x.shape[2:]))

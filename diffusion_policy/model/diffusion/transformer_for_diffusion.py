@@ -104,6 +104,7 @@ class TransformerDecoderLayer(nn.Module):
                  device=None, dtype=None) -> None:
         factory_kwargs = {'device': device, 'dtype': dtype}
         super(TransformerDecoderLayer, self).__init__()
+        
         self.self_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout, batch_first=batch_first,
                                             **factory_kwargs)
         self.multihead_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout, batch_first=batch_first,
@@ -384,6 +385,18 @@ class TransformerForDiffusion(ModuleAttrMixin):
         logger.info(
             "number of parameters: %e", sum(p.numel() for p in self.parameters())
         )
+        
+        tt = [0 for i in range(12)]
+        for name, param in self.decoder.named_parameters():
+            layer_name = name.split('.')[0]
+            layer_num = name.split('.')[1]
+            param_count = param.numel()
+            
+            tt[int(layer_num)] += param_count
+                
+            print(f"{name:<30} {param_count:<20}")
+        
+        print(tt)
 
     def _init_weights(self, module):
         ignore_types = (nn.Dropout, 
