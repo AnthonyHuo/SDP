@@ -152,7 +152,7 @@ training:
   use_ema: true
   val_every: 10000
 val_dataloader:
-  batch_size: 64
+  batch_size: 32
   num_workers: 1
   persistent_workers: false
   pin_memory: true

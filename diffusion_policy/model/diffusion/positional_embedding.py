@@ -7,8 +7,8 @@ class SinusoidalPosEmb(nn.Module):
         super().__init__()
         self.dim = dim
         self.learnable = learnable
-        if self.learnable:
-            self.matrix = nn.Parameter(torch.randn(1, dim // 2))
+        # if self.learnable:
+        self.matrix = nn.Parameter(torch.randn(1, dim // 2))
 
     def forward(self, x):
         device = x.device

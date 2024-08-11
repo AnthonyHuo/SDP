@@ -292,7 +292,7 @@ class TransformerForDiffusion(ModuleAttrMixin):
         self.drop = nn.Dropout(p_drop_emb)
 
         # cond encoder
-        self.time_emb = SinusoidalPosEmb(n_emb)
+        self.time_emb = SinusoidalPosEmb(n_emb, learnable = False)
         self.cond_obs_emb = None
         
         if obs_as_cond:
@@ -516,6 +516,9 @@ class TransformerForDiffusion(ModuleAttrMixin):
                     no_decay.add(fpn)
         # special case the position embedding parameter in the root GPT module as not decayed
         no_decay.add("pos_emb")
+        no_decay.add("time_emb.matrix")
+        
+        
         no_decay.add("_dummy_variable")
         if self.cond_pos_emb is not None:
             no_decay.add("cond_pos_emb")
