@@ -1,4 +1,31 @@
 # Sparse Diffusion Policy
+### How to run continual learning
+**First task:**
+In config/base.yaml, 
+- task_name: stack
+- task0: !include "config/tasks/stack_d0.yaml"
+- pretrained_path: null
+- policy.n_fixed_tasks: 0
+
+Then run python train.py
+
+**Second task:**
+In config/base.yaml, 
+- task_name: hammer_cleanup
+- task0: !include "config/tasks/hammer_cleanup_d0.yaml"
+- pretrained_path: your last ckpt
+- policy.n_fixed_tasks: 1
+
+Then run python train.py
+
+**Third task:**
+In config/base.yaml, 
+- task_name: coffee
+- task0: !include "config/tasks/coffee_d0.yaml"
+- pretrained_path: your last ckpt
+- policy.n_fixed_tasks: 2
+
+Then run python train.py
 
 ### Dataset Download
 
