@@ -191,7 +191,7 @@ class ParallelExperts(nn.Module):
             results = ParallelLinear.apply(inputs, expert_size, self.weight, self.bias, inference_experts_num)
         else:
             # print(f"Using the 0-{inference_experts_num} experts")
-            inference_experts_num = inference_experts_num.item()
+            inference_experts_num = inference_experts_num.item() if isinstance(inference_experts_num, torch.Tensor) else inference_experts_num
             results = ParallelLinear.apply(inputs, expert_size, self.weight, self.bias, inference_experts_num, True)
         return results
 
