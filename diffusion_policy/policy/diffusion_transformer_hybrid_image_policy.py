@@ -283,9 +283,6 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
                 shape = (B, self.n_action_steps, Da)
             cond_data = torch.zeros(size=shape, device=device, dtype=dtype)
             cond_mask = torch.zeros_like(cond_data, dtype=torch.bool)
-            # print('.'*20)
-            # print(cond_data.shape)
-            # print(cond_mask)
         else:
             # condition through impainting
             this_nobs = dict_apply(nobs, lambda x: x[:,:To,...].reshape(-1,*x.shape[2:]))
@@ -298,6 +295,8 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
             cond_data[:,:To,Da:] = nobs_features
             cond_mask[:,:To,Da:] = True
 
+        
+        
         # run sampling
         nsample = self.conditional_sample(
             cond_data, 
@@ -418,6 +417,7 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
         else:
             raise ValueError(f"Unsupported prediction type {pred_type}")
 
+        # print(pred.shape, target.shape)
         loss = F.mse_loss(pred, target, reduction='none')
         loss = loss * loss_mask.type(loss.dtype)
         loss = reduce(loss, 'b ... -> b (...)', 'mean')

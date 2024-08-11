@@ -10,6 +10,42 @@ import copy
 from mixture_of_experts.moe import MoE
 from mixture_of_experts.task_moe import TaskMoE
 logger = logging.getLogger(__name__)
+
+class ResidualBlock(nn.Module):
+    def __init__(self, input_dim):
+        super(ResidualBlock, self).__init__()
+        self.fc1 = nn.Linear(input_dim, input_dim * 4)
+        self.fc2 = nn.Linear(input_dim * 4, input_dim)
+        self.ln = nn.LayerNorm(input_dim)
+        self.dropout = nn.Dropout(p = 0.9)
+        self.act = nn.SiLU()
+
+    def forward(self, x):
+        out = self.dropout(x)
+        out = self.ln(out)
+        out = self.act(self.fc1(out))
+        out = self.fc2(out)
+        out += x  # Residual connection
+        return out
+
+class ResidualMLP(nn.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim,num_blocks):
+        super(ResidualMLP, self).__init__()
+        self.initial_fc = nn.Linear(input_dim, hidden_dim)
+        self.residual_blocks = nn.ModuleList([ResidualBlock(hidden_dim) for _ in range(num_blocks)])
+        self.output_fc = nn.Linear(hidden_dim, output_dim)
+        self.act = nn.SiLU()
+        
+    def forward(self, x):
+        x = F.relu(self.initial_fc(x))
+        for block in self.residual_blocks:
+            x = block(x)
+        x = self.act(x)
+        x = self.output_fc(x)
+        return x
+
+
+
 class TransformerDecoder(nn.Module):
     r"""TransformerDecoder is a stack of N decoder layers
 
@@ -107,8 +143,8 @@ class TransformerDecoderLayer(nn.Module):
         
         self.self_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout, batch_first=batch_first,
                                             **factory_kwargs)
-        self.multihead_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout, batch_first=batch_first,
-                                                 **factory_kwargs)
+        # self.multihead_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout, batch_first=batch_first,
+        #                                          **factory_kwargs)
         # Implementation of Feedforward model
         
         # self.linear1 = nn.Linear(d_model, dim_feedforward, **factory_kwargs)
@@ -132,10 +168,10 @@ class TransformerDecoderLayer(nn.Module):
         )
         self.norm_first = norm_first
         self.norm1 = nn.LayerNorm(d_model, eps=layer_norm_eps, **factory_kwargs)
-        self.norm2 = nn.LayerNorm(d_model, eps=layer_norm_eps, **factory_kwargs)
+        # self.norm2 = nn.LayerNorm(d_model, eps=layer_norm_eps, **factory_kwargs)
         self.norm3 = nn.LayerNorm(d_model, eps=layer_norm_eps, **factory_kwargs)
         self.dropout1 = nn.Dropout(dropout)
-        self.dropout2 = nn.Dropout(dropout)
+        # self.dropout2 = nn.Dropout(dropout)
         self.dropout3 = nn.Dropout(dropout)
 
         # Legacy string support for activation function.
@@ -169,13 +205,11 @@ class TransformerDecoderLayer(nn.Module):
         x = tgt
         if self.norm_first:
             x = x + self._sa_block(self.norm1(x), tgt_mask, tgt_key_padding_mask)
-            x = x + self._mha_block(self.norm2(x), memory, memory_mask, memory_key_padding_mask)
             output,aux_loss,probs = self._ff_block(self.norm3(x),task_id)
             x = x + output
             # aux_loss = self._ff_block(self.norm3(x),task_id)[1]
         else:
             x = self.norm1(x + self._sa_block(x, tgt_mask, tgt_key_padding_mask))
-            x = self.norm2(x + self._mha_block(x, memory, memory_mask, memory_key_padding_mask))
             x = self.norm3(x + self._ff_block(x,task_id))
 
         return x,aux_loss,probs
@@ -253,7 +287,7 @@ class TransformerForDiffusion(ModuleAttrMixin):
             T_cond += n_obs_steps
 
         # input embedding stem
-        self.input_emb = nn.Linear(input_dim, n_emb)
+        self.input_emb = nn.Linear(input_dim * 10, n_emb)
         self.pos_emb = nn.Parameter(torch.zeros(1, T, n_emb))
         self.drop = nn.Dropout(p_drop_emb)
 
@@ -347,7 +381,8 @@ class TransformerForDiffusion(ModuleAttrMixin):
             # causal mask to ensure that attention is only applied to the left in the input sequence
             # torch.nn.Transformer uses additive mask as opposed to multiplicative mask in minGPT
             # therefore, the upper triangle should be -inf and others (including diag) should be 0.
-            sz = T
+            # sz = T
+            sz = 2
             mask = (torch.triu(torch.ones(sz, sz)) == 1).transpose(0, 1)
             mask = mask.float().masked_fill(mask == 0, float('-inf')).masked_fill(mask == 1, float(0.0))
             self.register_buffer("mask", mask)
@@ -370,7 +405,16 @@ class TransformerForDiffusion(ModuleAttrMixin):
 
         # decoder head
         self.ln_f = nn.LayerNorm(n_emb)
-        self.head = nn.Linear(n_emb, output_dim)
+        # self.head = nn.Linear(n_emb, output_dim)
+        
+        self.output_dim = output_dim
+        
+        
+        self.diffusion_head = ResidualMLP(input_dim = n_emb * 3, 
+                                          hidden_dim = 256, 
+                                          output_dim = 10 * output_dim,
+                                          num_blocks = 3)
+        
             
         # constants
         self.T = T
@@ -536,59 +580,60 @@ class TransformerForDiffusion(ModuleAttrMixin):
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
         timesteps = timesteps.expand(sample.shape[0])
         time_emb = self.time_emb(timesteps).unsqueeze(1)
-        # (B,1,n_emb)
-
-        # process input
-        input_emb = self.input_emb(sample)
-
-        if self.encoder_only:
-            # BERT
-            token_embeddings = torch.cat([time_emb, input_emb], dim=1)
-            t = token_embeddings.shape[1]
-            position_embeddings = self.pos_emb[
-                :, :t, :
-            ]  # each position maps to a (learnable) vector
-            x = self.drop(token_embeddings + position_embeddings)
-            # (B,T+1,n_emb)
-            x = self.encoder(src=x, mask=self.mask)
-            # (B,T+1,n_emb)
-            x = x[:,1:,:]
-            # (B,T,n_emb)
-        else:
-            # encoder
-            cond_embeddings = time_emb
-            if self.obs_as_cond:
-                cond_obs_emb = self.cond_obs_emb(cond)
-                # (B,To,n_emb)
-                cond_embeddings = torch.cat([cond_embeddings, cond_obs_emb], dim=1)
-            tc = cond_embeddings.shape[1]
-            position_embeddings = self.cond_pos_emb[
-                :, :tc, :
-            ]  # each position maps to a (learnable) vector
-            x = self.drop(cond_embeddings + position_embeddings)
-            x = self.encoder(x)
-            memory = x
-            # (B,T_cond,n_emb)
-            
-            # decoder
-            token_embeddings = input_emb
-            t = token_embeddings.shape[1]
-            position_embeddings = self.pos_emb[
-                :, :t, :
-            ]  # each position maps to a (learnable) vector
-            x = self.drop(token_embeddings + position_embeddings)
-            # (B,T,n_emb)
-            x,loss,probs = self.decoder(
-                tgt=x,
-                task_id=task_id,
-                memory=memory,
-                tgt_mask=self.mask,
-                memory_mask=self.memory_mask,
-            )
-            # (B,T,n_emb)
+        # (B,1,n_emb)        
         
-        x = self.ln_f(x)
-        x = self.head(x)
+        # process input
+        input_emb = self.input_emb(sample.flatten(start_dim = -2))
+        # (B, n_emb)
+
+
+        # encoder
+        cond_obs_emb = self.cond_obs_emb(cond)
+        tc = cond_obs_emb.shape[1]
+        position_embeddings = self.cond_pos_emb[
+            :, :tc, :
+        ]  # each position maps to a (learnable) vector
+        
+        
+        x = self.drop(cond_obs_emb + position_embeddings)
+        x = self.encoder(x)
+
+        # print(x.shape, self.mask.shape)
+        
+        # print(self.memory_mask.shape)
+        
+        # print(self.mask[:2,:2])
+
+        x,loss,probs = self.decoder(
+            tgt=x,
+            task_id=task_id,
+            memory=None,
+            tgt_mask=self.mask[:2,:2],
+            memory_mask=None,
+        )
+        
+        # (B,his,n_emb)
+        
+        # print('x', x.shape)
+        
+        action_emb = torch.sum(x, dim = 1)
+        
+        # print('time_emb', time_emb.shape)
+        
+        time_emb = time_emb.squeeze(dim=-2)
+        
+        # print('input_emb', input_emb.shape)
+        
+        # obs_emb (B, n_emb)
+        # diffusion step emb (B,n_emb)
+        
+        # input_emb (B, n_emb)
+        
+        head_input = torch.cat([time_emb, action_emb, input_emb], dim=-1)
+        head_output = self.diffusion_head(head_input)
+        
+        x = head_output.view(-1, 10, self.output_dim)
+        
         # (B,T,n_out)
         return x,loss,probs
 
