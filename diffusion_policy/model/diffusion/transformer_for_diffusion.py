@@ -147,25 +147,25 @@ class TransformerDecoderLayer(nn.Module):
         #                                          **factory_kwargs)
         # Implementation of Feedforward model
         
-        # self.linear1 = nn.Linear(d_model, dim_feedforward, **factory_kwargs)
-        # self.dropout = nn.Dropout(dropout)
-        # self.linear2 = nn.Linear(dim_feedforward, d_model, **factory_kwargs)
+        self.linear1 = nn.Linear(d_model, dim_feedforward, **factory_kwargs)
+        self.dropout = nn.Dropout(dropout)
+        self.linear2 = nn.Linear(dim_feedforward, d_model, **factory_kwargs)
         
-        self.task_moe_layer = TaskMoE(
-            input_size = d_model,
-            head_size = dim_feedforward // 8,
-            num_experts = 8,
-            k = 4,
-            bias=True,
-            acc_aux_loss=True,
-            w_MI=0.0005, #0.0005
-            w_finetune_MI=0,
-            task_num=n_tasks,
-            activation=nn.Sequential(
-                nn.GELU(),
-            ),
-            noisy_gating=False,
-        )
+        # self.task_moe_layer = TaskMoE(
+        #     input_size = d_model,
+        #     head_size = dim_feedforward // 8,
+        #     num_experts = 8,
+        #     k = 4,
+        #     bias=True,
+        #     acc_aux_loss=True,
+        #     w_MI=0.0005, #0.0005
+        #     w_finetune_MI=0,
+        #     task_num=n_tasks,
+        #     activation=nn.Sequential(
+        #         nn.GELU(),
+        #     ),
+        #     noisy_gating=False,
+        # )
         self.norm_first = norm_first
         self.norm1 = nn.LayerNorm(d_model, eps=layer_norm_eps, **factory_kwargs)
         # self.norm2 = nn.LayerNorm(d_model, eps=layer_norm_eps, **factory_kwargs)
@@ -232,10 +232,20 @@ class TransformerDecoderLayer(nn.Module):
                                 need_weights=False)[0]
         return self.dropout2(x)
 
+    # # feed forward block
+    # def _ff_block(self, x: Tensor,task_id) -> Tensor:
+    #     # x = self.linear2(self.dropout(self.activation(self.linear1(x))))
+    #     x,aux_loss,probs= self.task_moe_layer(x,task_id)
+    #     return self.dropout3(x),aux_loss,probs
+
     # feed forward block
     def _ff_block(self, x: Tensor,task_id) -> Tensor:
-        # x = self.linear2(self.dropout(self.activation(self.linear1(x))))
-        x,aux_loss,probs= self.task_moe_layer(x,task_id)
+        x = self.linear2(self.dropout(self.activation(self.linear1(x))))
+        # x,aux_loss,probs= self.task_moe_layer(x,task_id)
+
+        aux_loss = torch.zeros(size=(0,)).float().to(x.device)
+        probs = None
+
         return self.dropout3(x),aux_loss,probs
 
 
@@ -290,6 +300,8 @@ class TransformerForDiffusion(ModuleAttrMixin):
         self.input_emb = nn.Linear(input_dim * 10, n_emb)
         self.pos_emb = nn.Parameter(torch.zeros(1, T, n_emb))
         self.drop = nn.Dropout(p_drop_emb)
+
+        self.task_emb = nn.Parameter(torch.zeros(n_tasks, 1, n_emb))
 
         # cond encoder
         self.time_emb = SinusoidalPosEmb(n_emb, learnable = False)
@@ -415,6 +427,8 @@ class TransformerForDiffusion(ModuleAttrMixin):
                                           output_dim = 10 * output_dim,
                                           num_blocks = 3)
         
+        num_params = count_parameters(self.diffusion_head)
+        print(f'The diffusion_head has {num_params/1000000} trainable parameters')
             
         # constants
         self.T = T
@@ -474,6 +488,7 @@ class TransformerForDiffusion(ModuleAttrMixin):
             torch.nn.init.ones_(module.weight)
         elif isinstance(module, TransformerForDiffusion):
             torch.nn.init.normal_(module.pos_emb, mean=0.0, std=0.02)
+            torch.nn.init.normal_(module.task_emb, mean=0.0, std=0.02)
             if module.cond_obs_emb is not None:
                 torch.nn.init.normal_(module.cond_pos_emb, mean=0.0, std=0.02)
         elif isinstance(module, ignore_types):
@@ -516,6 +531,7 @@ class TransformerForDiffusion(ModuleAttrMixin):
                     no_decay.add(fpn)
         # special case the position embedding parameter in the root GPT module as not decayed
         no_decay.add("pos_emb")
+        no_decay.add('task_emb')
         no_decay.add("time_emb.matrix")
         
         
@@ -592,13 +608,18 @@ class TransformerForDiffusion(ModuleAttrMixin):
 
         # encoder
         cond_obs_emb = self.cond_obs_emb(cond)
-        tc = cond_obs_emb.shape[1]
+        cond_task_emb = self.task_emb[task_id:task_id+1,:,:]
+        batch_size_tp = cond_obs_emb.shape[0]
+        cond_task_emb = cond_task_emb.repeat(batch_size_tp,1,1)
+
+        cond_emb = torch.cat([cond_task_emb, cond_obs_emb], dim = 1)
+        tc = cond_emb.shape[1]
         position_embeddings = self.cond_pos_emb[
             :, :tc, :
         ]  # each position maps to a (learnable) vector
         
         
-        x = self.drop(cond_obs_emb + position_embeddings)
+        x = self.drop(cond_emb + position_embeddings)
         x = self.encoder(x)
 
         # print(x.shape, self.mask.shape)
@@ -606,12 +627,14 @@ class TransformerForDiffusion(ModuleAttrMixin):
         # print(self.memory_mask.shape)
         
         # print(self.mask[:2,:2])
+        new_mask = torch.zeros(3,3).to(self.mask.device)
+        new_mask[1:,1:] = self.mask
 
         x,loss,probs = self.decoder(
             tgt=x,
             task_id=task_id,
             memory=None,
-            tgt_mask=self.mask[:2,:2],
+            tgt_mask=new_mask,
             memory_mask=None,
         )
         

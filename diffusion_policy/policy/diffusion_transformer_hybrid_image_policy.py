@@ -407,7 +407,7 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
         pred,aux_loss,probs = self.model(noisy_trajectory, timesteps, cond,task_id)
 
         # Convert the tensor to a NumPy array
-        probs_np = probs.detach().cpu().numpy()
+        # probs_np = probs.detach().cpu().numpy()
 
         pred_type = self.noise_scheduler.config.prediction_type 
         if pred_type == 'epsilon':
@@ -422,4 +422,4 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
         loss = loss * loss_mask.type(loss.dtype)
         loss = reduce(loss, 'b ... -> b (...)', 'mean')
         loss = loss.mean()
-        return loss+aux_loss
+        return loss
