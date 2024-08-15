@@ -138,12 +138,12 @@ training:
   checkpoint_every: 1
   debug: false
   device: cuda:0
-  gradient_accumulate_every: 1
+  gradient_accumulate_every: 4
   lr_scheduler: cosine
   lr_warmup_steps: 100
   max_train_steps: null
   max_val_steps: null
-  num_epochs: 3500
+  num_epochs: 302
   resume: false
   rollout_every: 50
   sample_every: 10

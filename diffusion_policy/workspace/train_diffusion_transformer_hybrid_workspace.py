@@ -32,6 +32,7 @@ from typing import List
 from diffusion_policy.dataset.multitask_dataset import MultiDataLoader
 from itertools import zip_longest
 import psutil
+import time
 OmegaConf.register_new_resolver("eval", eval, replace=True)
 
 class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
@@ -54,6 +55,7 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
             self.ema_model = copy.deepcopy(self.model)
 
         # configure training state
+        # print(cfg.optimizer)
         self.optimizer = self.model.get_optimizer(**cfg.optimizer)
 
         # configure training state
@@ -63,9 +65,12 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
     def run(self):
         cfg = copy.deepcopy(self.cfg)
 
+        lastest_ckpt_path = pathlib.Path("/home/yixiao/yixiao/sparse_diff/SDP/outputs/2024-08-03/23-39-18/checkpoints/epoch=0149-test_mean_score=5.950.ckpt")
+        self.load_checkpoint(path=lastest_ckpt_path)
+        
         # resume training
         if cfg.training.resume:   
-            lastest_ckpt_path = pathlib.Path("")
+            lastest_ckpt_path = pathlib.Path("/home/yixiao/yixiao/sparse_diff/SDP/outputs/2024-08-03/23-39-18/checkpoints/latest.ckpt")
             if lastest_ckpt_path.is_file():
                 print(f"Resuming from checkpoint {lastest_ckpt_path}")
                 self.load_checkpoint(path=lastest_ckpt_path)
@@ -106,6 +111,7 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
         if cfg.training.use_ema:
             self.ema_model.set_normalizer(normalizers)
 
+
         # configure lr scheduler
         lr_scheduler = get_scheduler(
             cfg.training.lr_scheduler,
@@ -118,6 +124,8 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
             # however huggingface diffusers steps it every batch
             last_epoch=self.global_step-1
         )
+        
+
 
         # configure ema
         ema: EMAModel = None
@@ -186,6 +194,8 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                 # ========= train for this epoch ==========
                 train_losses = list()
 
+                # ps0 = time.time()
+                
                 with tqdm.tqdm(multi_traindataloader, desc=f"Training epoch {self.epoch}", 
                         leave=False, mininterval=cfg.training.tqdm_interval_sec) as tepoch:
                     for batch_idx,batch in enumerate(tepoch):
@@ -203,7 +213,7 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                             print("Assigning train_sampling_batch with task_id: ", assigned_task_id)
                             train_sampling_batchs[assigned_task_id] = batch
                 
-
+                        # ps1 = time.time()
                         # compute loss
                         raw_loss = self.model.compute_loss(batch,task_id)
                         loss = raw_loss / cfg.training.gradient_accumulate_every
@@ -219,6 +229,7 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                         if cfg.training.use_ema:
                             ema.step(self.model)
 
+                        # print('network', time.time()-ps1)
                         # logging
                         raw_loss_cpu = raw_loss.item()
                         tepoch.set_postfix(loss=raw_loss_cpu, refresh=False)
@@ -240,6 +251,8 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                         if (cfg.training.max_train_steps is not None) \
                             and batch_idx >= (cfg.training.max_train_steps-1):
                             break
+                        
+                        # print('total average time:', (time.time()-ps0)/(batch_idx+1))
 
                 for i, train_sampling_batch in enumerate(train_sampling_batchs):
                     if train_sampling_batch is None:
