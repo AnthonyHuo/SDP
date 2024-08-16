@@ -71,9 +71,13 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
         if_train = True
         if_eval = False
 
-
-        # lastest_ckpt_path = pathlib.Path("/home/yixiao/projects/sdp/SDP/outputs/2024-08-07/16-34-37/checkpoints/150.ckpt")
-        # self.load_checkpoint(path=lastest_ckpt_path)
+        # lastest_ckpt_path = pathlib.Path("/home/yixiao/yixiao/sdp/SDP/outputs/2024-08-14/21-34-55/checkpoints/latest.ckpt")
+        # lastest_ckpt_path = pathlib.Path("/home/yixiao/yixiao/sdp/SDP/outputs/2024-08-15/09-13-24/checkpoints/50.ckpt")
+        # lastest_ckpt_path = pathlib.Path("/home/yixiao/yixiao/sdp/SDP/outputs/2024-08-15/10-05-58/checkpoints/100.ckpt")
+        # lastest_ckpt_path = pathlib.Path("/home/yixiao/yixiao/sdp/SDP/outputs/2024-08-15/15-18-56/checkpoints/150.ckpt")
+        # lastest_ckpt_path = pathlib.Path("/home/yixiao/yixiao/sdp/SDP/outputs/2024-08-15/21-28-58/checkpoints/200.ckpt")
+        lastest_ckpt_path = pathlib.Path("/home/yixiao/yixiao/sdp/SDP/outputs/2024-08-15/21-28-58/checkpoints/latest.ckpt")
+        self.load_checkpoint(path=lastest_ckpt_path)
         # resume training
         # if cfg.training.resume:   
         #     lastest_ckpt_path = pathlib.Path("/home/yixiao/projects/sdp/SDP/outputs/2024-08-06/20-21-25/checkpoints/latest.ckpt")

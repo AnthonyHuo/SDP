@@ -73,7 +73,7 @@ policy:
     beta_start: 0.0001
     clip_sample: true
     num_train_timesteps: 100
-    prediction_type: epsilon
+    prediction_type: sample
     variance_type: fixed_small
   num_inference_steps: 100
   obs_as_cond: true
