@@ -65,8 +65,8 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
     def run(self):
         cfg = copy.deepcopy(self.cfg)
 
-        lastest_ckpt_path = pathlib.Path("/home/yixiao/yixiao/sparse_diff/SDP/outputs/2024-08-03/23-39-18/checkpoints/epoch=0149-test_mean_score=5.950.ckpt")
-        self.load_checkpoint(path=lastest_ckpt_path)
+        # lastest_ckpt_path = pathlib.Path("/home/yixiao/yixiao/sparse_diff/SDP/outputs/2024-08-03/23-39-18/checkpoints/epoch=0149-test_mean_score=5.950.ckpt")
+        # self.load_checkpoint(path=lastest_ckpt_path)
         
         # resume training
         if cfg.training.resume:   

@@ -7,8 +7,8 @@ from diffusion_policy.model.common.module_attr_mixin import ModuleAttrMixin
 import torch.nn.functional as F
 from torch import nn, Tensor
 import copy
-from mixture_of_experts.moe import MoE
 from mixture_of_experts.task_moe import TaskMoE
+from task_moe.moe import MoE
 logger = logging.getLogger(__name__)
 class TransformerDecoder(nn.Module):
     r"""TransformerDecoder is a stack of N decoder layers
@@ -366,8 +366,27 @@ class TransformerForDiffusion(ModuleAttrMixin):
             self.memory_mask = None
 
         # decoder head
-        self.ln_f = nn.LayerNorm(n_emb)
-        self.head = nn.Linear(n_emb, output_dim)
+        
+        
+        # self.ln_f = nn.LayerNorm(n_emb)
+        # self.head = nn.Linear(n_emb, output_dim)
+        
+        
+        self.action_head = MoE(
+            gate_input_size = n_emb, 
+            expert_input_size = (n_emb,),
+            expert_output_size = (output_dim,),
+            module = nn.Sequential(nn.LayerNorm(n_emb), nn.Linear(n_emb, output_dim)), 
+            num_experts = 8, 
+            k = 2, 
+            w_MI=0.0005, #0.0005
+            w_finetune_MI=0,
+            fixed_task_num=0,
+            noisy_gating=False,
+        )
+
+        
+        
             
         # constants
         self.T = T
@@ -572,8 +591,11 @@ class TransformerForDiffusion(ModuleAttrMixin):
             )
             # (B,T,n_emb)
         
-        x = self.ln_f(x)
-        x = self.head(x)
+        x, head_mi_loss = self.action_head(x,x,task_id)
+                
+        loss = loss + head_mi_loss
+        # x = self.ln_f(x)
+        # x = self.head(x)
         # (B,T,n_out)
         return x,loss,probs
 
