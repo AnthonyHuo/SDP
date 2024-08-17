@@ -73,7 +73,7 @@ policy:
     beta_start: 0.0001
     clip_sample: true
     num_train_timesteps: 100
-    prediction_type: epsilon
+    prediction_type: sample
     variance_type: fixed_small
   num_inference_steps: 100
   obs_as_cond: true
@@ -146,11 +146,11 @@ training:
   num_epochs: 302
   resume: false
   rollout_every: 50
-  sample_every: 10
+  sample_every: 100000
   seed: 42
   tqdm_interval_sec: 1.0
   use_ema: true
-  val_every: 10
+  val_every: 1000000
 val_dataloader:
   batch_size: 64
   num_workers: 1
@@ -158,9 +158,9 @@ val_dataloader:
   pin_memory: true
   shuffle: false
 
-task_num: 1
+task_num: 2
 task0: !include "config/tasks/square_d0.yaml" #2334
-# task1: !include "config/tasks/stack_d0.yaml" #1632
+task1: !include "config/tasks/stack_d0.yaml" #1632
 # task2: !include "config/tasks/coffee_d0.yaml" #3402
 # task3: !include "config/tasks/hammer_cleanup_d0.yaml" #4356
 # task4: !include "config/tasks/mug_cleanup_d0.yaml" #5162

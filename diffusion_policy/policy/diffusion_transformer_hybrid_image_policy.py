@@ -19,6 +19,7 @@ import robomimic.models.base_nets as rmbn
 import diffusion_policy.model.vision.crop_randomizer as dmvc
 from diffusion_policy.common.pytorch_util import dict_apply, replace_submodules
 from patch_moe.encoder import MoEEncoder
+from diffusion_policy.model.diffusion.encoder import StateEncoder
 
 from patch_moe.resnet import ResNet, PatchMoeResNet
 import robomimic
@@ -113,6 +114,8 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
 
         obs_encoder = policy.nets['policy'].nets['encoder'].nets['obs']
 
+        
+        
         # k = [4,4,2,2]
         # exp = [8,8,4,4]
         # ### [16,16,8,8]
@@ -148,7 +151,7 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
                     num_channels=x.num_features)
             )
             
-
+        self.my_obs_encoder = StateEncoder()
         
         if eval_fixed_crop:
             replace_submodules(
@@ -357,13 +360,51 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
         # handle different ways of passing observation
         cond = None
         trajectory = nactions
+        
+        # agentview_image torch.Size([128, 3, 84, 84]) after [3,80,80]
+        # robot0_eye_in_hand_image torch.Size([128, 3, 84, 84])
+        # robot0_eef_pos torch.Size([128, 3])
+        # robot0_eef_quat torch.Size([128, 4])
+        # robot0_gripper_qpos torch.Size([128, 2])
+        
         if self.obs_as_cond:
             # reshape B, T, ... to B*T
             this_nobs = dict_apply(nobs, 
                 lambda x: x[:,:To,...].reshape(-1,*x.shape[2:]))
+            
+            
+            # for key in list(this_nobs.keys()):
+            #     print(key, this_nobs[key].size(), torch.mean(this_nobs[key]), torch.std(this_nobs[key]))
+            # exit()
+            
             nobs_features = self.obs_encoder(this_nobs)
+            # print(nobs_features[0,:], this_nobs['robot0_eef_pos'][0,:], this_nobs['robot0_eef_quat'][0,:], this_nobs['robot0_gripper_qpos'][0,:])
+            # [**, 137]
+            
+            # print(nobs_features.size())
+            out_dic_rand = {}
+            for key in self.obs_encoder.obs_randomizers.keys():
+                x = this_nobs[key]
+                if self.obs_encoder.obs_randomizers[key] is not None:
+                    x = self.obs_encoder.obs_randomizers[key].forward_in(x)
+                # print(key, x.shape, x.reshape(-1,2,*x.shape[1:]).shape)
+                out_dic_rand[key] = x.reshape(-1,2,*x.shape[1:])
+                
+            cond, loss = self.my_obs_encoder(out_dic_rand, task_id)
+            
+            # def count_parameters(model):
+            #     return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+            # # Get the number of parameters
+            # num_params = count_parameters(self.my_obs_encoder)
+            # print(f'The encoder has {num_params/1000000} trainable parameters')
+            
+            # print(cond.size())
+            # print(nobs_features.size())
+                
+            # exit()
             # reshape back to B, T, Do
-            cond = nobs_features.reshape(batch_size, To, -1)
+            # cond = nobs_features.reshape(batch_size, To, -1)
             if self.pred_action_steps_only:
                 start = To - 1
                 end = start + self.n_action_steps

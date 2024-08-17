@@ -195,14 +195,14 @@ class MoE(nn.Module):
         for i in range(self.task_num):
             nn.init.zeros_(self.f_gate[i][-1].weight)
 
-        self.register_buffer('PTE', torch.zeros(1, self.num_experts))
+        self.register_buffer('PTE', torch.zeros(self.task_num, self.num_experts))
         self.register_buffer('PE', torch.zeros(self.num_experts))
         self.momentum = 0.0
         self.register_buffer('times',torch.zeros(1))
 
-        self.task_gate_freq = [0] * 1
-        self.topk_acc_probs = [0] * 1
-        self.token_probs = [0] * 1
+        self.task_gate_freq = [0] * self.task_num
+        self.topk_acc_probs = [0] * self.task_num
+        self.token_probs = [0] * self.task_num
 
     def get_MIloss(self, logits, probs, gates, task_bh):
 
@@ -337,9 +337,12 @@ class MoE(nn.Module):
             gate_input = gate_input.unsqueeze(1)
         if expert_input.dim() == 2:
             expert_input = expert_input.unsqueeze(1)
+            
+        # print(gate_input.size(), expert_input.size())
         if not ((gate_input.size(0) == expert_input.size(0)) & (gate_input.size(1) == expert_input.size(1))):
             raise Exception('the first two dimension of gate input and expert input should be the same.')
         
+        # print(self.expert_input_size, expert_input.size())
         
         if self.debug:
             expert_input_dim = len(self.expert_input_size)
@@ -360,7 +363,7 @@ class MoE(nn.Module):
         expert_input = expert_input.reshape(-1, *self.expert_input_size)
         
         expert_outputs = self.experts(expert_input[self.batch_index], self.expert_size)
-        
+        # print(expert_outputs.size())
         if self.debug:
             expert_output_dim = len(self.expert_output_size)
             if tuple(expert_outputs.size()[-expert_output_dim:]) != self.expert_output_size:

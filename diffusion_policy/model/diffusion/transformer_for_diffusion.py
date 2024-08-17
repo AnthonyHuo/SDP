@@ -257,7 +257,8 @@ class TransformerForDiffusion(ModuleAttrMixin):
         # cond encoder
         self.time_emb = SinusoidalPosEmb(n_emb)
         self.cond_obs_emb = None
-        
+        # print('_'*20)
+        # print(cond_dim, n_emb)
         if obs_as_cond:
             self.cond_obs_emb = nn.Linear(cond_dim, n_emb)
 
@@ -562,7 +563,8 @@ class TransformerForDiffusion(ModuleAttrMixin):
             # encoder
             cond_embeddings = time_emb
             if self.obs_as_cond:
-                cond_obs_emb = self.cond_obs_emb(cond)
+                # cond_obs_emb = self.cond_obs_emb(cond)
+                cond_obs_emb = cond
                 # (B,To,n_emb)
                 cond_embeddings = torch.cat([cond_embeddings, cond_obs_emb], dim=1)
             tc = cond_embeddings.shape[1]

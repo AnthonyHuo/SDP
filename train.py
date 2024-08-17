@@ -36,7 +36,7 @@ def main(cfg: OmegaConf):
     workspace.run()
 
 if __name__ == "__main__":
-    os.environ["CUDA_VISIBLE_DEVICES"]='3,'
+    os.environ["CUDA_VISIBLE_DEVICES"]='2,'
     os.environ["MUJOCO_GL"]="osmesa"
     from utils.recursive_yaml import read_yaml, write_yaml
     
