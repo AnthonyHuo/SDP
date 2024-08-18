@@ -73,7 +73,7 @@ policy:
     beta_start: 0.0001
     clip_sample: true
     num_train_timesteps: 100
-    prediction_type: sample
+    prediction_type: epsilon
     variance_type: fixed_small
   num_inference_steps: 100
   obs_as_cond: true
@@ -1048,7 +1048,7 @@ task7:
 task_name: multi-task
 task_num: 8
 training:
-  checkpoint_every: 1
+  checkpoint_every: 25
   debug: false
   device: cuda:0
   gradient_accumulate_every: 4

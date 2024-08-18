@@ -279,6 +279,15 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
         if self.obs_as_cond:
             this_nobs = dict_apply(nobs, lambda x: x[:,:To,...].reshape(-1,*x.shape[2:]))
             nobs_features = self.obs_encoder(this_nobs)
+            
+            # out_dic_rand = {}
+            # for key in self.obs_encoder.obs_randomizers.keys():
+            #     x = this_nobs[key]
+            #     if self.obs_encoder.obs_randomizers[key] is not None:
+            #         x = self.obs_encoder.obs_randomizers[key].forward_in(x)
+            #     out_dic_rand[key] = x
+            # nobs_features, obs_mi_loss = self.my_obs_encoder(out_dic_rand, task_id)
+            
             # reshape back to B, To, Do
             cond = nobs_features.reshape(B, To, -1)
             shape = (B, T, Da)
@@ -290,6 +299,15 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
             # condition through impainting
             this_nobs = dict_apply(nobs, lambda x: x[:,:To,...].reshape(-1,*x.shape[2:]))
             nobs_features = self.obs_encoder(this_nobs)
+
+            # out_dic_rand = {}
+            # for key in self.obs_encoder.obs_randomizers.keys():
+            #     x = this_nobs[key]
+            #     if self.obs_encoder.obs_randomizers[key] is not None:
+            #         x = self.obs_encoder.obs_randomizers[key].forward_in(x)
+            #     out_dic_rand[key] = x
+            # nobs_features, obs_mi_loss = self.my_obs_encoder(out_dic_rand, task_id)
+
             # reshape back to B, To, Do
             nobs_features = nobs_features.reshape(B, To, -1)
             shape = (B, T, Da+Do)
@@ -377,20 +395,21 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
             #     print(key, this_nobs[key].size(), torch.mean(this_nobs[key]), torch.std(this_nobs[key]))
             # exit()
             
-            nobs_features = self.obs_encoder(this_nobs)
+            # 
             # print(nobs_features[0,:], this_nobs['robot0_eef_pos'][0,:], this_nobs['robot0_eef_quat'][0,:], this_nobs['robot0_gripper_qpos'][0,:])
             # [**, 137]
             
             # print(nobs_features.size())
-            out_dic_rand = {}
-            for key in self.obs_encoder.obs_randomizers.keys():
-                x = this_nobs[key]
-                if self.obs_encoder.obs_randomizers[key] is not None:
-                    x = self.obs_encoder.obs_randomizers[key].forward_in(x)
-                # print(key, x.shape, x.reshape(-1,2,*x.shape[1:]).shape)
-                out_dic_rand[key] = x.reshape(-1,2,*x.shape[1:])
-                
-            cond, loss = self.my_obs_encoder(out_dic_rand, task_id)
+            
+            
+            nobs_features = self.obs_encoder(this_nobs)
+            # out_dic_rand = {}
+            # for key in self.obs_encoder.obs_randomizers.keys():
+            #     x = this_nobs[key]
+            #     if self.obs_encoder.obs_randomizers[key] is not None:
+            #         x = self.obs_encoder.obs_randomizers[key].forward_in(x)
+            #     out_dic_rand[key] = x
+            # nobs_features, obs_mi_loss = self.my_obs_encoder(out_dic_rand, task_id)
             
             # def count_parameters(model):
             #     return sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -404,7 +423,7 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
                 
             # exit()
             # reshape back to B, T, Do
-            # cond = nobs_features.reshape(batch_size, To, -1)
+            cond = nobs_features.reshape(batch_size, To, -1)
             if self.pred_action_steps_only:
                 start = To - 1
                 end = start + self.n_action_steps
@@ -413,6 +432,16 @@ class DiffusionTransformerHybridImagePolicy(BaseImagePolicy):
             # reshape B, T, ... to B*T
             this_nobs = dict_apply(nobs, lambda x: x.reshape(-1, *x.shape[2:]))
             nobs_features = self.obs_encoder(this_nobs)
+            
+            # out_dic_rand = {}
+            # for key in self.obs_encoder.obs_randomizers.keys():
+            #     x = this_nobs[key]
+            #     if self.obs_encoder.obs_randomizers[key] is not None:
+            #         x = self.obs_encoder.obs_randomizers[key].forward_in(x)
+            #     out_dic_rand[key] = x
+            # nobs_features, obs_mi_loss = self.my_obs_encoder(out_dic_rand, task_id)
+
+            
             # reshape back to B, T, Do
             nobs_features = nobs_features.reshape(batch_size, horizon, -1)
             trajectory = torch.cat([nactions, nobs_features], dim=-1).detach()

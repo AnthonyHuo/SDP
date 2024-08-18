@@ -109,9 +109,9 @@ class TransformerDecoderLayer(nn.Module):
         self.multihead_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout, batch_first=batch_first,
                                                  **factory_kwargs)
         # Implementation of Feedforward model
-        self.linear1 = nn.Linear(d_model, dim_feedforward, **factory_kwargs)
-        self.dropout = nn.Dropout(dropout)
-        self.linear2 = nn.Linear(dim_feedforward, d_model, **factory_kwargs)
+        # self.linear1 = nn.Linear(d_model, dim_feedforward, **factory_kwargs)
+        # self.dropout = nn.Dropout(dropout)
+        # self.linear2 = nn.Linear(dim_feedforward, d_model, **factory_kwargs)
         self.task_moe_layer = TaskMoE(
             input_size = d_model,
             head_size = dim_feedforward // 16,
@@ -249,6 +249,8 @@ class TransformerForDiffusion(ModuleAttrMixin):
             assert time_as_cond
             T_cond += n_obs_steps
 
+        self.n_emb = n_emb
+        self.output_dim = output_dim
         # input embedding stem
         self.input_emb = nn.Linear(input_dim, n_emb)
         self.pos_emb = nn.Parameter(torch.zeros(1, T, n_emb))
@@ -563,9 +565,10 @@ class TransformerForDiffusion(ModuleAttrMixin):
             # encoder
             cond_embeddings = time_emb
             if self.obs_as_cond:
-                # cond_obs_emb = self.cond_obs_emb(cond)
-                cond_obs_emb = cond
+                cond_obs_emb = self.cond_obs_emb(cond)
+                # cond_obs_emb = cond
                 # (B,To,n_emb)
+                # print(cond_embeddings.size(), cond_obs_emb.size())
                 cond_embeddings = torch.cat([cond_embeddings, cond_obs_emb], dim=1)
             tc = cond_embeddings.shape[1]
             position_embeddings = self.cond_pos_emb[
@@ -593,7 +596,12 @@ class TransformerForDiffusion(ModuleAttrMixin):
             )
             # (B,T,n_emb)
         
+        batch_size, time_steps, x_emb_size = x.size()
+        x = x.reshape(-1, x_emb_size)
         x, head_mi_loss = self.action_head(x,x,task_id)
+        x = x.reshape(batch_size, time_steps, self.output_dim)
+                
+                
                 
         loss = loss + head_mi_loss
         # x = self.ln_f(x)

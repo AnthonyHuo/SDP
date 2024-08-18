@@ -1,6 +1,6 @@
 import sys
 import os
-# sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '/home/yixiao/yixiao/sparse_diff/SDP')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '/home/yixiao/yixiao/sparse_diff/SDP')))
 
 import torch
 import torch.nn as nn
@@ -18,6 +18,7 @@ from torch import nn, Tensor
 import copy
 from mixture_of_experts.task_moe import TaskMoE
 import math
+import numpy as np
 logger = logging.getLogger(__name__)
 
 
@@ -346,7 +347,7 @@ class VisionEncoder(nn.Module):
         self.patch_pos_embed = nn.Parameter(torch.zeros(1, 25, 512))
 
 
-        self.linear = nn.Linear(512, 128)
+        # self.linear = nn.Linear(512, 128)
 
         
         # n_emb = 128
@@ -372,24 +373,23 @@ class VisionEncoder(nn.Module):
         
 
     def forward(self, gate_input, expert_input, task_bh):
+        
+        
         out1, loss1 = self.conv_moe1(gate_input, expert_input, task_bh)
         out2, loss2 = self.conv_moe2(gate_input, out1, task_bh)
         out3, loss3 = self.conv_moe3(gate_input, out2, task_bh)
         out4, loss4 = self.conv_moe4(gate_input, out3, task_bh)
         out5, loss5 = self.conv_moe5(gate_input, out4, task_bh)
-
                 
         out = out5
         patch_size = self.patch_size
-        patches = out.unfold(3, patch_size, patch_size).unfold(4, patch_size, patch_size)
-        patches = torch.permute(patches,(0,1,3,4,5,6,2))
-        patches = rearrange(patches, "b l p1 p2 h w c -> b l (p1 p2) (h w c)")
+        patches = out.unfold(2, patch_size, patch_size).unfold(3, patch_size, patch_size)
+        patches = torch.permute(patches,(0,2,3,4,5,1))
+        patches = rearrange(patches, "b p1 p2 h w c -> b (p1 p2) (h w c)")
         
-        patches = patches + self.patch_pos_embed[:,None,:,:]
-        
-        patches = rearrange(patches, "b l n e -> b (l n) e ")
-        
-        patches = self.linear(patches)
+        patches = patches + self.patch_pos_embed[:,:,:]
+                
+        # patches = self.linear(patches)
         
         # patches, loss3, _ = self.decoder(
         #         tgt = patches,
@@ -406,14 +406,15 @@ class VisionEncoder(nn.Module):
 class RobotEncoder(nn.Module):
     def __init__(self, robot_state_size):
         super(RobotEncoder, self).__init__()
+        self.n_emb = 512
         num_experts = 8
         k = 2
         gate_input_size = 16
         expert_input_size = (robot_state_size,)
-        expert_output_size = (128,)
+        expert_output_size = (self.n_emb,)
         
         module = FourierEmbedding(input_dim = robot_state_size, 
-                                  hidden_dim = 128, 
+                                  hidden_dim = self.n_emb, 
                                   num_freq_bands = 16)
         
         
@@ -439,6 +440,9 @@ class RobotEncoder(nn.Module):
 class StateEncoder(nn.Module):
     def __init__(self):
         super(StateEncoder, self).__init__()
+        
+        self.time_steps = 2
+        
         self.state_keys = ['agentview_image', 
                       'robot0_eye_in_hand_image',
                       'robot0_eef_pos',
@@ -460,11 +464,11 @@ class StateEncoder(nn.Module):
             ['robot0_gripper_qpos', RobotEncoder(robot_state_size=2)],
         ])
         
-        n_emb = 128
-        self.pos_emb = nn.Parameter(torch.zeros(1, 2, n_emb))
+        self.n_emb = 512
+        self.pos_emb = nn.Parameter(torch.zeros(1, self.time_steps, self.n_emb))
         
         
-        n_emb = 128
+        n_emb = 512
         n_head = 8
         task_num = 8
         
@@ -483,76 +487,59 @@ class StateEncoder(nn.Module):
             num_layers=6
         )
         
-        self.pool = torch.nn.AvgPool2d(kernel_size=(5,8),stride=(2,4))
-        
-        
-        self.to_out = nn.Sequential(nn.LayerNorm(1066), nn.GELU(), nn.Linear(1066, 512))
-        
-        self.gate_emb = nn.Parameter(torch.zeros(task_num, 2, 16))
-        
+        self.gate_emb = nn.Parameter(torch.zeros(task_num, 16))
         
         # agentview_image torch.Size([128, 3, 84, 84]) after [3,80,80]
         # robot0_eye_in_hand_image torch.Size([128, 3, 84, 84])
         # robot0_eef_pos torch.Size([128, 3])
         # robot0_eef_quat torch.Size([128, 4])
         # robot0_gripper_qpos torch.Size([128, 2])
+        
     def forward(self, expert_input_dic, task_bh):        
         bs = expert_input_dic['agentview_image'].size(0)
-        gate_input = self.gate_emb[task_bh:task_bh+1].repeat(bs, 1, 1)
+        gate_input = self.gate_emb[task_bh:task_bh+1].repeat(bs, 1)
         loss = 0
-        tmp_dic = {}
         tmp_out = []
-        # ps = time.time()
+        time_index = [[] for _ in range(self.time_steps)]
+        count = 0
         for key in self.encoders:
             out, tmp_loss = self.encoders[key](gate_input, expert_input_dic[key], task_bh)
+            if out.dim() == 2:
+                num_per_time_step = 1
+            elif out.dim() == 3:
+                num_per_time_step = out.size(1)
+            else:
+                raise Exception('State Encoder: out should be in 2 or 3 dimensions.')
+            
+            for i in range(self.time_steps):
+                time_index[i].extend(list(np.arange(count+i*num_per_time_step, count+(i+1)*num_per_time_step)))
+            count += self.time_steps * num_per_time_step
+                                
             loss += tmp_loss
-            tmp_dic[key] = out.size()
-            out = out + self.pos_emb.repeat_interleave(out.size(1) // self.pos_emb.size(1),dim=1)
+            
+            out = out.reshape(bs // self.time_steps, self.time_steps, *out.size()[1:])
+            if out.dim() == 3:
+                out = out + self.pos_emb
+            elif out.dim() == 4:
+                out = out + self.pos_emb[:,:,None,:]
+                out = out.reshape(bs // self.time_steps, -1, self.n_emb)
+
             tmp_out.append(out)
             
-        # print('encoder',time.time()-ps)
-
-            
         tmp_out = torch.cat(tmp_out, dim=1)
-        
-        # ps = time.time()
 
         out, tmp_loss, _ = self.decoder(
                 tgt = tmp_out,
                 task_id = task_bh,
                 memory = tmp_out,)
         
-        # print('decoder',time.time()-ps)
-        
-        
         loss += tmp_loss
         
-        # ps = time.time()
-        out_dic = {}
-        count = 0
-        for key in tmp_dic.keys():
-            out_dic[key] = out[:,count: tmp_dic[key][1]]
-        # print('???',time.time()-ps)
-
-            
-        # ps = time.time()
-        T = 2
-        for key in self.obs_keys:
-            b, l, emb = out_dic[key].size()
-            out_dic[key] = out_dic[key].view(b, T, -1, emb)
-            out_dic[key] = self.pool(out_dic[key]).view(b, T, -1)
-            
-            
-        tmp_out = []
-        for key in out_dic.keys():
-            tmp_out.append(out_dic[key])
-            
-        # print('dfsdfs',time.time()-ps)
-            
-        # ps = time.time()
-        tmp_out = torch.cat(tmp_out,dim=-1)
-        out = self.to_out(tmp_out)
-        # print('to out',time.time()-ps)
+        out_list = []
+        for i in range(self.time_steps):
+            out_list.append(torch.mean(tmp_out[:,time_index[i],:], dim=1, keepdim=True))
+        
+        out = torch.cat(out_list, dim=1)
                                 
         return out, loss
         
@@ -595,111 +582,13 @@ class FourierEmbedding(nn.Module):
         x = torch.stack(continuous_embs).sum(dim=0)
         return self.to_out(x)
 
+def count_parameters(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
 
 if __name__ == '__main__':
 
-    batch_size = 64
-    sequence_length = 10
-    gate_input_size = 16
-    expert_input_size = (3,80,80)
-    expert_output_size = (16,40,40)
-
-
-    module = DSCBlock(in_size=3, expand_size = 32, out_size=16, kernel_size=7, stride=2)
-
-    num_experts = 8
-    k = 2
-    model = MoE(gate_input_size, 
-                expert_input_size,
-                expert_output_size,
-                module, 
-                num_experts, 
-                k, 
-                w_MI=0, w_H=0, w_finetune_MI=0, limit_k=0, w_topk_loss=0.0, task_num=8, noisy_gating=False, gating_activation=None, task_id=None)
-
-    model.eval()
-
-    gate_input = torch.randn(size=(batch_size, sequence_length, gate_input_size))
-    expert_input = torch.randn(size=(batch_size, sequence_length) + expert_input_size)
-    task_bh = torch.tensor([2])
-
-
-    ps = time.time()
-    out, loss = model(gate_input, expert_input, task_bh)
-    print(time.time()-ps)
-    print(out.size(), loss)
-    
-    
-    expert_input_size = (16,40,40)
-    expert_output_size = (32,20,20)
-    module = DSCBlock(in_size=16, expand_size = 64, out_size=32, kernel_size=3, stride=2)
-    num_experts = 8
-    k = 2
-    model = MoE(gate_input_size, 
-                expert_input_size,
-                expert_output_size,
-                module, 
-                num_experts, 
-                k, 
-                w_MI=0, w_H=0, w_finetune_MI=0, limit_k=0, w_topk_loss=0.0, task_num=8, noisy_gating=False, gating_activation=None, task_id=None)
-
-    model.eval()
-
-
-    ps = time.time()
-    out, loss = model(gate_input, out, task_bh)
-    print(time.time()-ps)
-    
-    print(out.size(), loss)
-    
-    
-    model = VisionEncoder()
-
-    model.eval()
-    gate_input_size = 16
-    expert_input_size = (3,80,80)
-    expert_output_size = (16,40,40)
-    
-    gate_input = torch.randn(size=(batch_size, sequence_length, gate_input_size))
-    expert_input = torch.randn(size=(batch_size, sequence_length) + expert_input_size)
-    print(expert_input.size())
-    task_bh = torch.tensor([2])
-    
-    
-
-    ps = time.time()
-    out, loss = model(expert_input, task_bh)
-    print(time.time()-ps)
-    
-    print(out.size(), loss)
-    
-    
-    def count_parameters(model):
-        return sum(p.numel() for p in model.parameters() if p.requires_grad)
-
-    # Get the number of parameters
-    num_params = count_parameters(model)
-    print(f'The ob1 has {num_params/1000000} trainable parameters')
-    
-    
-    # patch_size = 4
-    # patches = out.unfold(3, patch_size, patch_size).unfold(4, patch_size, patch_size)
-    # patches = torch.permute(patches,(0,1,3,4,5,6,2))
-    # patches = rearrange(patches, "b l p1 p2 h w c -> b l (p1 p2) (h w c)")
-    # print(patches.size())
-    
-    # patches = rearrange(patches, "b l n h w c -> b l n (h w c)")
-    # print(patches.size())
-    
-    x = torch.zeros(3, 2, 4)
-    pos_emb = FourierEmbedding(input_dim= 4, hidden_dim=128, num_freq_bands=16)
-    y = pos_emb(x)
-    print(y.size())
-    
-    
-    
     state_encoder = StateEncoder()
-    
     
     # agentview_image torch.Size([128, 3, 84, 84]) after [3,80,80]
     # robot0_eye_in_hand_image torch.Size([128, 3, 84, 84])
@@ -709,16 +598,20 @@ if __name__ == '__main__':
     
     bs = 128
     input_dic = {}
-    gate_input = torch.randn(size=(bs, 2, 16))
-    input_dic['agentview_image'] = torch.zeros(bs,2, 3, 80, 80)
-    input_dic['robot0_eye_in_hand_image'] = torch.zeros(bs,2, 3, 80, 80)
-    input_dic['robot0_eef_pos'] = torch.zeros(bs,2, 3)
-    input_dic['robot0_eef_quat'] = torch.zeros(bs,2, 4)
-    input_dic['robot0_gripper_qpos'] = torch.zeros(bs,2, 2)
+    gate_input = torch.randn(size=(bs, 16))
+    input_dic['agentview_image'] = torch.zeros(bs, 3, 80, 80)
+    input_dic['robot0_eye_in_hand_image'] = torch.zeros(bs, 3, 80, 80)
+    input_dic['robot0_eef_pos'] = torch.zeros(bs, 3)
+    input_dic['robot0_eef_quat'] = torch.zeros(bs, 4)
+    input_dic['robot0_gripper_qpos'] = torch.zeros(bs, 2)
+    
+    task_bh = torch.tensor([7])
     
     ps = time.time()
-    out, loss = state_encoder(gate_input, input_dic, task_bh)
+    out, loss = state_encoder(input_dic, task_bh)
     print(time.time()-ps)
+    
+    print(loss)
     
     # Get the number of parameters
     num_params = count_parameters(state_encoder.encoders['robot0_eef_quat'])

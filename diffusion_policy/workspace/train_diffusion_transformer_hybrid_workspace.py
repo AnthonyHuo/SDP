@@ -32,7 +32,11 @@ from typing import List
 from diffusion_policy.dataset.multitask_dataset import MultiDataLoader
 from itertools import zip_longest
 import psutil
+# import mimicgen
 import time
+import gc 
+from diffusion_policy.dataset.base_dataset import BaseImageDataset, LinearNormalizer
+from diffusion_policy.model.common.normalizer import LinearNormalizer, SingleFieldLinearNormalizer
 OmegaConf.register_new_resolver("eval", eval, replace=True)
 
 class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
@@ -55,7 +59,6 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
             self.ema_model = copy.deepcopy(self.model)
 
         # configure training state
-        # print(cfg.optimizer)
         self.optimizer = self.model.get_optimizer(**cfg.optimizer)
 
         # configure training state
@@ -65,67 +68,86 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
     def run(self):
         cfg = copy.deepcopy(self.cfg)
 
-        # lastest_ckpt_path = pathlib.Path("/home/yixiao/yixiao/sparse_diff/SDP/outputs/2024-08-03/23-39-18/checkpoints/epoch=0149-test_mean_score=5.950.ckpt")
+        if_train = True
+        if_eval = False
+
+
+        # lastest_ckpt_path = pathlib.Path("/home/yixiao/yixiao/sparse_diff/SDP/outputs/2024-08-17/11-55-30/checkpoints/latest.ckpt")
         # self.load_checkpoint(path=lastest_ckpt_path)
         
         # resume training
-        if cfg.training.resume:   
-            lastest_ckpt_path = pathlib.Path("/home/yixiao/yixiao/sparse_diff/SDP/outputs/2024-08-03/23-39-18/checkpoints/latest.ckpt")
-            if lastest_ckpt_path.is_file():
-                print(f"Resuming from checkpoint {lastest_ckpt_path}")
-                self.load_checkpoint(path=lastest_ckpt_path)
+        # if cfg.training.resume:   
+        #     lastest_ckpt_path = pathlib.Path("/home/yixiao/projects/sdp/SDP/outputs/2024-08-06/20-21-25/checkpoints/latest.ckpt")
+        #     if lastest_ckpt_path.is_file():
+        #         print(f"Resuming from checkpoint {lastest_ckpt_path}")
+        #         self.load_checkpoint(path=lastest_ckpt_path)
 
-        mem=psutil.virtual_memory()
-        print('before current available memory is' +' : '+ str(round(mem.used/1024**2)) +' MIB')
+        # mem=psutil.virtual_memory()
+        # print('before current available memory is' +' : '+ str(round(mem.used/1024**2)) +' MIB')
         # configure dataset
-        datasets: List[BaseImageDataset] = []
-        for i in range(cfg.task_num):
-            datasets.append(hydra.utils.instantiate(cfg[f'task{i}'].dataset))
+        if if_train:
+            datasets: List[BaseImageDataset] = []
+            for i in range(cfg.task_num):
+                datasets.append(hydra.utils.instantiate(cfg[f'task{i}'].dataset))
+            
+            assert isinstance(datasets[0], BaseImageDataset)
+            train_dataloaders = []
+            
+            normalizers=[]
+            for dataset in datasets:
+                train_dataloaders.append(DataLoader(dataset, **cfg.dataloader))
+                normalizers.append(dataset.get_normalizer())
+                
+            max_train_dataloader_len = max([len(train_dataloader) for train_dataloader in train_dataloaders])
+            for train_dataloader in train_dataloaders:
+                print("Length of train_dataloader: ", len(train_dataloader))
+            multi_traindataloader=MultiDataLoader(train_dataloaders)
+            multi_traindataloader.get_memory_usage()
+            
+            val_datasets=[]
+            for dataset in datasets:
+                val_datasets.append(dataset.get_validation_dataset())
         
-        assert isinstance(datasets[0], BaseImageDataset)
-        train_dataloaders = []
-        normalizers=[]
-        for dataset in datasets:
-            train_dataloaders.append(DataLoader(dataset, **cfg.dataloader))
-            normalizers.append(dataset.get_normalizer())
-        max_train_dataloader_len = max([len(train_dataloader) for train_dataloader in train_dataloaders])
-        for train_dataloader in train_dataloaders:
-            print("Length of train_dataloader: ", len(train_dataloader))
-        multi_traindataloader=MultiDataLoader(train_dataloaders)
-        multi_traindataloader.get_memory_usage()
-        
-        mem=psutil.virtual_memory()
-        print('after current available memory is' +' : '+ str(round(mem.used/1024**2)) +' MIB')
+            val_dataloaders = []
+            for val_dataset in val_datasets:
+                val_dataloaders.append(DataLoader(val_dataset, **cfg.val_dataloader))
+
+
+        # for i in range(len(normalizers)):
+        #     torch.save(normalizers[i],'norm'+str(i)+'.ckpt')
+            
         # exit()
-        # configure validation dataset
-        val_datasets=[]
-        for dataset in datasets:
-            val_datasets.append(dataset.get_validation_dataset())
-       
-        val_dataloaders = []
-        for val_dataset in val_datasets:
-            val_dataloaders.append(DataLoader(val_dataset, **cfg.val_dataloader))
+
+        if if_eval:
+            normalizers = []
+            for i in range(8):
+                normalizer = LinearNormalizer()
+                normalizer = torch.load('norm'+str(i)+'.ckpt')
+                normalizers.append(normalizer)
 
 
         self.model.set_normalizer(normalizers)
+        
+        
         if cfg.training.use_ema:
             self.ema_model.set_normalizer(normalizers)
 
-
         # configure lr scheduler
-        lr_scheduler = get_scheduler(
-            cfg.training.lr_scheduler,
-            optimizer=self.optimizer,
-            num_warmup_steps=cfg.training.lr_warmup_steps,
-            num_training_steps=(
-                max_train_dataloader_len * cfg.training.num_epochs) \
-                    // cfg.training.gradient_accumulate_every,
-            # pytorch assumes stepping LRScheduler every epoch
-            # however huggingface diffusers steps it every batch
-            last_epoch=self.global_step-1
-        )
+        if if_train:
+            lr_scheduler = get_scheduler(
+                cfg.training.lr_scheduler,
+                optimizer=self.optimizer,
+                num_warmup_steps=cfg.training.lr_warmup_steps,
+                num_training_steps=(
+                    max_train_dataloader_len * cfg.training.num_epochs) \
+                        // cfg.training.gradient_accumulate_every,
+                # pytorch assumes stepping LRScheduler every epoch
+                # however huggingface diffusers steps it every batch
+                last_epoch=self.global_step-1
+            )
         
-
+        
+        
 
         # configure ema
         ema: EMAModel = None
@@ -153,6 +175,18 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                 "output_dir": self.output_dir,
             }
         )
+        
+        # del datasets
+        # del train_dataloaders
+        # del multi_traindataloader
+        # del val_datasets
+        # del val_dataloaders
+        
+        
+        # gc.collect()
+        # print('sleep 2s')
+        # time.sleep(2)
+        
 
         # configure checkpoint
         topk_manager = TopKCheckpointManager(
@@ -194,73 +228,70 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                 # ========= train for this epoch ==========
                 train_losses = list()
 
-                # ps0 = time.time()
                 
-                with tqdm.tqdm(multi_traindataloader, desc=f"Training epoch {self.epoch}", 
-                        leave=False, mininterval=cfg.training.tqdm_interval_sec) as tepoch:
-                    for batch_idx,batch in enumerate(tepoch):
+                if if_train:
+                    with tqdm.tqdm(multi_traindataloader, desc=f"Training epoch {self.epoch}", 
+                            leave=False, mininterval=cfg.training.tqdm_interval_sec) as tepoch:
+                        for batch_idx,batch in enumerate(tepoch):
 
-                        assigned_task_id = batch_idx%cfg.task_num
-                        
+                            assigned_task_id = batch_idx%cfg.task_num
+                            
 
-                        # load the next batch of the dataloader, 'DataLoader' object is not an iterator
-                        assert assigned_task_id == multi_traindataloader.loader_idx
-                        if batch is None:
-                            continue
-                        batch = dict_apply(batch, lambda x: x.to(device, non_blocking=True))
-                        task_id = torch.tensor([assigned_task_id], dtype=torch.int64).to(device)
-                        if train_sampling_batchs[assigned_task_id] is None:
-                            print("Assigning train_sampling_batch with task_id: ", assigned_task_id)
-                            train_sampling_batchs[assigned_task_id] = batch
-                
-                        # ps1 = time.time()
-                        # compute loss
-                        raw_loss = self.model.compute_loss(batch,task_id)
-                        loss = raw_loss / cfg.training.gradient_accumulate_every
-                        loss.backward()
+                            # load the next batch of the dataloader, 'DataLoader' object is not an iterator
+                            assert assigned_task_id == multi_traindataloader.loader_idx
+                            if batch is None:
+                                continue
+                            batch = dict_apply(batch, lambda x: x.to(device, non_blocking=True))
+                            task_id = torch.tensor([assigned_task_id], dtype=torch.int64).to(device)
+                            if train_sampling_batchs[assigned_task_id] is None:
+                                print("Assigning train_sampling_batch with task_id: ", assigned_task_id)
+                                train_sampling_batchs[assigned_task_id] = batch
+                    
 
-                        # step optimizer
-                        if self.global_step % cfg.training.gradient_accumulate_every == 0:
-                            self.optimizer.step()
-                            self.optimizer.zero_grad()
-                            lr_scheduler.step()
-                        
-                        # update ema
-                        if cfg.training.use_ema:
-                            ema.step(self.model)
+                            # compute loss
+                            raw_loss = self.model.compute_loss(batch,task_id)
+                            loss = raw_loss / cfg.training.gradient_accumulate_every
+                            loss.backward()
 
-                        # print('network', time.time()-ps1)
-                        # logging
-                        raw_loss_cpu = raw_loss.item()
-                        tepoch.set_postfix(loss=raw_loss_cpu, refresh=False)
-                        train_losses.append(raw_loss_cpu)
-                        step_log = {
-                            'train_loss': raw_loss_cpu,
-                            'global_step': self.global_step,
-                            'epoch': self.epoch,
-                            'lr': lr_scheduler.get_last_lr()[0]
-                        }
+                            # step optimizer
+                            if self.global_step % cfg.training.gradient_accumulate_every == 0:
+                                self.optimizer.step()
+                                self.optimizer.zero_grad()
+                                lr_scheduler.step()
+                            
+                            # update ema
+                            if cfg.training.use_ema:
+                                ema.step(self.model)
 
-                        is_last_batch = (batch_idx == (max_train_dataloader_len-1))
-                        if not is_last_batch:
-                            # log of last step is combined with validation and rollout
-                            wandb_run.log(step_log, step=self.global_step)
-                            json_logger.log(step_log)
-                            self.global_step += 1
+                            # logging
+                            raw_loss_cpu = raw_loss.item()
+                            tepoch.set_postfix(loss=raw_loss_cpu, refresh=False)
+                            train_losses.append(raw_loss_cpu)
+                            step_log = {
+                                'train_loss': raw_loss_cpu,
+                                'global_step': self.global_step,
+                                'epoch': self.epoch,
+                                'lr': lr_scheduler.get_last_lr()[0]
+                            }
 
-                        if (cfg.training.max_train_steps is not None) \
-                            and batch_idx >= (cfg.training.max_train_steps-1):
-                            break
-                        
-                        # print('total average time:', (time.time()-ps0)/(batch_idx+1))
+                            is_last_batch = (batch_idx == (max_train_dataloader_len-1))
+                            if not is_last_batch:
+                                # log of last step is combined with validation and rollout
+                                wandb_run.log(step_log, step=self.global_step)
+                                json_logger.log(step_log)
+                                self.global_step += 1
 
-                for i, train_sampling_batch in enumerate(train_sampling_batchs):
-                    if train_sampling_batch is None:
-                        raise ValueError(f"train_sampling_batch {i} is None")
-                # at the end of each epoch
-                # replace train_loss with epoch average
-                train_loss = np.mean(train_losses)
-                step_log['train_loss'] = train_loss
+                            if (cfg.training.max_train_steps is not None) \
+                                and batch_idx >= (cfg.training.max_train_steps-1):
+                                break
+
+                    for i, train_sampling_batch in enumerate(train_sampling_batchs):
+                        if train_sampling_batch is None:
+                            raise ValueError(f"train_sampling_batch {i} is None")
+                    # at the end of each epoch
+                    # replace train_loss with epoch average
+                    train_loss = np.mean(train_losses)
+                    step_log['train_loss'] = train_loss
 
                 # ========= eval for this epoch ==========
                 policy = self.model
@@ -271,6 +302,7 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                 # run rollout
                 runner_logs = []
                 if ((self.epoch+1) % cfg.training.rollout_every) == 0:
+                    
                     for i in range(cfg.task_num):
                         env_runner = hydra.utils.instantiate(cfg[f'task{i}'].env_runner, output_dir=self.output_dir)
                         runner_log = env_runner.run(policy,task_id=torch.tensor([i], dtype=torch.int64).to(device))
@@ -278,6 +310,26 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                         runner_logs.append(runner_log)
                     for runner_log in runner_logs:
                         step_log.update(runner_log)
+                
+
+                if if_eval:
+                    scores = []
+
+                    for i in range(cfg.task_num):
+                        env_runner = hydra.utils.instantiate(cfg[f'task{i}'].env_runner, output_dir=self.output_dir)
+                        runner_log = env_runner.run(policy,task_id=torch.tensor([i], dtype=torch.int64).to(device))
+                        runner_log = {key + f'_{i}': value for key, value in runner_log.items()}
+                        print(i,runner_log)
+                        runner_logs.append(runner_log)
+                        scores.append(runner_log['test/mean_score_'+str(i)])
+                    for runner_log in runner_logs:
+                        step_log.update(runner_log)
+
+                    print(scores)
+                    exit()
+                    
+                        
+                    
                 env_runner = None
                 # run validation
                 if (self.epoch % cfg.training.val_every) == 0:
@@ -324,32 +376,36 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                             del mse
                 
                 # checkpoint
+                self.save_checkpoint()
+                
                 if (self.epoch % cfg.training.checkpoint_every) == 0:
-                    # checkpointing
-                    if cfg.checkpoint.save_last_ckpt:
-                        self.save_checkpoint()
-                    if cfg.checkpoint.save_last_snapshot:
-                        self.save_snapshot()
-
-                    # sanitize metric names
-                    metric_dict = dict()
-                    for key, value in step_log.items():
-                        new_key = key.replace('/', '_')
-                        metric_dict[new_key] = value
-                    sum=0
-                    for key in metric_dict.keys():
-                        # if start with cfg.checkpoint.topk.monitor_key, then sum up
-                        if key.startswith(cfg.checkpoint.topk.monitor_key):
-                            sum+=metric_dict[key]
-                    metric_dict[cfg.checkpoint.topk.monitor_key] = sum
+                    self.save_checkpoint(tag = str(self.epoch))
                     
-                    # We can't copy the last checkpoint here
-                    # since save_checkpoint uses threads.
-                    # therefore at this point the file might have been empty!
-                    topk_ckpt_path = topk_manager.get_ckpt_path(metric_dict)
+                    # # checkpointing
+                    # if cfg.checkpoint.save_last_ckpt:
+                    #     self.save_checkpoint()
+                    # if cfg.checkpoint.save_last_snapshot:
+                    #     self.save_snapshot()
 
-                    if topk_ckpt_path is not None:
-                        self.save_checkpoint(path=topk_ckpt_path)
+                    # # sanitize metric names
+                    # metric_dict = dict()
+                    # for key, value in step_log.items():
+                    #     new_key = key.replace('/', '_')
+                    #     metric_dict[new_key] = value
+                    # sum=0
+                    # for key in metric_dict.keys():
+                    #     # if start with cfg.checkpoint.topk.monitor_key, then sum up
+                    #     if key.startswith(cfg.checkpoint.topk.monitor_key):
+                    #         sum+=metric_dict[key]
+                    # metric_dict[cfg.checkpoint.topk.monitor_key] = sum
+                    
+                    # # We can't copy the last checkpoint here
+                    # # since save_checkpoint uses threads.
+                    # # therefore at this point the file might have been empty!
+                    # topk_ckpt_path = topk_manager.get_ckpt_path(metric_dict)
+
+                    # if topk_ckpt_path is not None:
+                    #     self.save_checkpoint(path=topk_ckpt_path)
                 # ========= eval end for this epoch ==========
                 policy.train()
 

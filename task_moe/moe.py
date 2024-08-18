@@ -115,12 +115,10 @@ class ParallelExperts(nn.Module):
     def forward(self, inputs, expert_size):
         experts = self.experts
         expert_size = expert_size.tolist()
-
         input_list = inputs.split(expert_size, dim=0)
         output_list = []
         for i, expert in enumerate(experts):
             output_list.append(expert(input_list[i]))
-        
         return torch.cat(output_list, dim=0)
     
 
@@ -216,7 +214,7 @@ class MoE(nn.Module):
 
         self.topk_acc_probs[task_bh] = self.topk_acc_probs[task_bh]*0.95 + (probs.mean(0)).detach()*0.05
         
-        PT = 1 / 1 # since we want each task to have equal weight
+        PT = 1 / self.task_num # since we want each task to have equal weight
 
         # probs = P(E|T) in this batch
         # P(T,E) = P(E|T) * P(T) 
@@ -239,7 +237,7 @@ class MoE(nn.Module):
         PE = self.PTE.sum(0).detach()
 
         # P(E,T) in this batch
-        MI_task_gate = torch.zeros(1, self.num_experts).cuda()
+        MI_task_gate = torch.zeros(self.task_num, self.num_experts).cuda()
         MI_task_gate[task_bh] = MI_task_gate[task_bh] + probs.mean(0) * PT
 
         # P(E) in this batch
@@ -276,9 +274,8 @@ class MoE(nn.Module):
             gates: a Tensor with shape [batch_size, num_experts]
             load: a Tensor with shape [num_experts]
         """
-        clean_logits = self.f_gate[task_bh](x).squeeze()
-
-        # if self.noisy_gating and self.training:
+        clean_logits = self.f_gate[task_bh](x)
+                
         if self.noisy_gating:
             clean_logits, raw_noise_stddev = clean_logits.chunk(2, dim=-1)
             noise_stddev = F.softplus(raw_noise_stddev) + noise_epsilon
@@ -296,10 +293,7 @@ class MoE(nn.Module):
             probs = torch.masked_fill(probs, skip_mask, 0)
 
         if self.training and (sample_topk > 0):
-            # top_k_indices = torch.multinomial(probs + 1e-6, self.k)
-            # top_k_gates = torch.gather(probs, 1, top_k_indices)
             assert sample_topk <= self.k
-
             _, top_km1_indices = probs.topk(self.k - sample_topk, dim=1)
             masked_probs = probs + 1e-6
             masked_probs[torch.arange(probs.size(0)).unsqueeze(
@@ -309,66 +303,27 @@ class MoE(nn.Module):
             top_k_gates = torch.gather(probs, 1, top_k_indices)
         else:
             top_k_gates, top_k_indices = probs.topk(self.k, dim=1)
-
-       # top_k_indecis: [batch, K]
        
-        
-        top_k_gates = top_k_gates
-
-        
-
         batch_gates, batch_index, expert_size, gates, index_sorted_experts = \
             compute_gating(self.k, probs, top_k_gates, top_k_indices)
         self.expert_size = expert_size
-        # print('here: ', expert_size)
-        # # print('probs: ', probs)
-        # # print('x: ', x)
-        # exit()
         self.index_sorted_experts = index_sorted_experts
         self.batch_index = batch_index
         self.batch_gates = batch_gates
 
-        
-
         return self.get_MIloss(logits, probs, gates, task_bh)
 
-    def forward(self, gate_input, expert_input, task_bh=None, skip_mask=None, sample_topk=0, multiply_by_gates=True):
-        if gate_input.dim() == 2:
-            gate_input = gate_input.unsqueeze(1)
-        if expert_input.dim() == 2:
-            expert_input = expert_input.unsqueeze(1)
+    def forward(self, gate_input, expert_input, task_bh=None, sample_topk=0, multiply_by_gates=True):
+        if not (gate_input.size(0) == expert_input.size(0)) :
+            raise Exception('the first dimension (batch size) of gate input and expert input should be the same.')
             
-        # print(gate_input.size(), expert_input.size())
-        if not ((gate_input.size(0) == expert_input.size(0)) & (gate_input.size(1) == expert_input.size(1))):
-            raise Exception('the first two dimension of gate input and expert input should be the same.')
-        
-        # print(self.expert_input_size, expert_input.size())
-        
-        if self.debug:
-            expert_input_dim = len(self.expert_input_size)
-            if tuple(expert_input.size()[-expert_input_dim:]) != self.expert_input_size:
-                raise Exception('expert_input_size does not match.')
-        
-
+        if gate_input.dim() != 2:
+            raise Exception('the dimension of gate input should be 2.')
             
-        bsz, length, emb_size = gate_input.size()
-        gate_input = gate_input.reshape(-1, emb_size)
-        if skip_mask is not None:
-            skip_mask = skip_mask.view(-1, 1)
-            
-        loss= self.top_k_gating(gate_input, task_bh, skip_mask,  sample_topk=sample_topk)
+        batch_size, gate_emb_size = gate_input.size()
         
-        
-        bsz, length = expert_input.size()[:2]
-        expert_input = expert_input.reshape(-1, *self.expert_input_size)
-        
+        loss= self.top_k_gating(gate_input, task_bh, sample_topk=sample_topk)
         expert_outputs = self.experts(expert_input[self.batch_index], self.expert_size)
-        # print(expert_outputs.size())
-        if self.debug:
-            expert_output_dim = len(self.expert_output_size)
-            if tuple(expert_outputs.size()[-expert_output_dim:]) != self.expert_output_size:
-                raise Exception('expert_input_size does not match.')
-        
         
         if multiply_by_gates:
             gates = self.batch_gates
@@ -377,13 +332,11 @@ class MoE(nn.Module):
             expert_outputs = expert_outputs * gates
 
 
-
-        zeros = torch.zeros((bsz * length,) + self.expert_output_size, 
+        zeros = torch.zeros((batch_size,) + self.expert_output_size, 
             dtype=expert_outputs.dtype, device=expert_outputs.device)
-        # print(self.batch_index, expert_outputs.size())
+
         y = zeros.index_add(0, self.batch_index, expert_outputs)
-        y = y.view(bsz, length, *self.expert_output_size)
-        
+                
         return y, loss
 
 
@@ -408,8 +361,8 @@ if __name__ == '__main__':
 
     model.eval()
 
-    gate_input = torch.randn(size=(batch_size, sequence_length, gate_input_size))
-    expert_input = torch.randn(size=(batch_size, sequence_length) + expert_input_size)
+    gate_input = torch.randn(size=(batch_size, gate_input_size))
+    expert_input = torch.randn(size=(batch_size, ) + expert_input_size)
     task_bh = torch.tensor([2])
 
     out, loss = model(gate_input, expert_input, task_bh)
@@ -423,10 +376,10 @@ if __name__ == '__main__':
     sequence_length = 10
     gate_input_size = 16
     expert_input_size = (3,80,80)
-    expert_output_size = (1,80,80)
+    expert_output_size = (128,80,80)
 
 
-    module = nn.Conv2d(3, 1, 3, 1, 1)
+    module = nn.Conv2d(3, 128, 3, 1, 1)
     num_experts = 8
     k = 2
     model = MoE(gate_input_size, 
@@ -439,38 +392,10 @@ if __name__ == '__main__':
 
     model.eval()
 
-    gate_input = torch.randn(size=(batch_size, sequence_length, gate_input_size))
-    expert_input = torch.randn(size=(batch_size, sequence_length) + expert_input_size)
+    gate_input = torch.randn(size=(batch_size, gate_input_size))
+    expert_input = torch.randn(size=(batch_size,) + expert_input_size)
     task_bh = torch.tensor([2])
 
     out, loss = model(gate_input, expert_input, task_bh)
     print(out.size(), loss)
   
-  
-#   model = LinearMoE(input_size=input_size,output_size=output_size,num_experts_per_task=1,k=-1,module=None,activation=nn.Sequential(
-#                         nn.GELU(),
-#                     ),noisy_gating=False,fixed_task_num=3,acc_aux_loss=True)
-  
-#   print(model.experts.old_experts.training)
-#   exit()
-#   if type(input_size) is not int:
-#       input_data = torch.randn(batch_size,  *input_size)
-#   else:
-#     input_data = torch.randn(batch_size, sequence_length, input_size)
-
-#   # Specify the task or task batch you want to perform inference for.
-#   task_batch_index = int(-1) # Replace with the appropriate task batch index.
-
-#   # You can skip certain tokens during inference by providing a skip_mask. 
-#   # Set to None if you don't want to skip any tokens.
-#   skip_mask = None
-
-#   # Perform inference (forward pass) using the TaskMoE model for the specified task.
-#   output= model(input_data, task_batch_index, skip_mask=skip_mask)
-# #   print(model)
-#   print(output.shape)
-#   for name, param in model.named_parameters():
-#     print(name, param.shape, param.requires_grad)
-      
-#     #   print(name, param.shape, param.requires_grad)
-#     # print(name, param.shape, param.requires_grad)
