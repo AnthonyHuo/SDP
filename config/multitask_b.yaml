@@ -64,7 +64,7 @@ policy:
   n_cond_layers: 0
   n_emb: 512
   n_head: 4
-  n_layer: 12
+  n_layer: 8
   n_obs_steps: 2
   noise_scheduler:
     _target_: diffusers.schedulers.scheduling_ddpm.DDPMScheduler
@@ -158,12 +158,12 @@ val_dataloader:
   pin_memory: true
   shuffle: false
 
-task_num: 8
+task_num: 0
 task0: !include "config/tasks/square_d0.yaml" #2334
-task1: !include "config/tasks/stack_d0.yaml" #1632
-task2: !include "config/tasks/coffee_d0.yaml" #3402
-task3: !include "config/tasks/hammer_cleanup_d0.yaml" #4356
-task4: !include "config/tasks/mug_cleanup_d0.yaml" #5162
-task5: !include "config/tasks/nut_assembly_d0.yaml" #5476
-task6: !include "config/tasks/stack_three_d0.yaml" #3888
-task7: !include "config/tasks/threading_d0.yaml" #3424
+# task1: !include "config/tasks/stack_d0.yaml" #1632
+# task2: !include "config/tasks/coffee_d0.yaml" #3402
+# task3: !include "config/tasks/hammer_cleanup_d0.yaml" #4356
+# task4: !include "config/tasks/mug_cleanup_d0.yaml" #5162
+# task5: !include "config/tasks/nut_assembly_d0.yaml" #5476
+# task6: !include "config/tasks/stack_three_d0.yaml" #3888
+# task7: !include "config/tasks/threading_d0.yaml" #3424

@@ -371,22 +371,24 @@ class TransformerForDiffusion(ModuleAttrMixin):
         # decoder head
         
         
-        # self.ln_f = nn.LayerNorm(n_emb)
-        # self.head = nn.Linear(n_emb, output_dim)
+        self.ln_f = nn.LayerNorm(n_emb)
+        self.head = nn.Linear(n_emb, output_dim)
         
-        
-        self.action_head = MoE(
-            gate_input_size = n_emb, 
-            expert_input_size = (n_emb,),
-            expert_output_size = (output_dim,),
-            module = nn.Sequential(nn.LayerNorm(n_emb), nn.Linear(n_emb, output_dim)), 
-            num_experts = 8, 
-            k = 2, 
-            w_MI=0.0005, #0.0005
-            w_finetune_MI=0,
-            fixed_task_num=0,
-            noisy_gating=False,
-        )
+
+        # self.encoder = None
+        # self.cond_obs_emb = None
+        # self.action_head = MoE(
+        #     gate_input_size = n_emb, 
+        #     expert_input_size = (n_emb,),
+        #     expert_output_size = (output_dim,),
+        #     module = nn.Sequential(nn.LayerNorm(n_emb), nn.Linear(n_emb, output_dim)), 
+        #     num_experts = 8, 
+        #     k = 2, 
+        #     w_MI=0.0005, #0.0005
+        #     w_finetune_MI=0,
+        #     fixed_task_num=0,
+        #     noisy_gating=False,
+        # )
 
         
         
@@ -565,7 +567,10 @@ class TransformerForDiffusion(ModuleAttrMixin):
             # encoder
             cond_embeddings = time_emb
             if self.obs_as_cond:
-                cond_obs_emb = self.cond_obs_emb(cond)
+                if self.cond_obs_emb is None:
+                    cond_obs_emb = cond
+                else:
+                    cond_obs_emb = self.cond_obs_emb(cond)
                 # cond_obs_emb = cond
                 # (B,To,n_emb)
                 # print(cond_embeddings.size(), cond_obs_emb.size())
@@ -575,7 +580,8 @@ class TransformerForDiffusion(ModuleAttrMixin):
                 :, :tc, :
             ]  # each position maps to a (learnable) vector
             x = self.drop(cond_embeddings + position_embeddings)
-            x = self.encoder(x)
+            if self.encoder is not None:
+                x = self.encoder(x)
             memory = x
             # (B,T_cond,n_emb)
             
@@ -596,16 +602,15 @@ class TransformerForDiffusion(ModuleAttrMixin):
             )
             # (B,T,n_emb)
         
-        batch_size, time_steps, x_emb_size = x.size()
-        x = x.reshape(-1, x_emb_size)
-        x, head_mi_loss = self.action_head(x,x,task_id)
-        x = x.reshape(batch_size, time_steps, self.output_dim)
-                
-                
-                
-        loss = loss + head_mi_loss
-        # x = self.ln_f(x)
-        # x = self.head(x)
+        # batch_size, time_steps, x_emb_size = x.size()
+        # x = x.reshape(-1, x_emb_size)
+        # x, head_mi_loss = self.action_head(x,x,task_id)
+        # x = x.reshape(batch_size, time_steps, self.output_dim)
+        # loss = loss + head_mi_loss
+
+        x = self.ln_f(x)
+        x = self.head(x)
+
         # (B,T,n_out)
         return x,loss,probs
 

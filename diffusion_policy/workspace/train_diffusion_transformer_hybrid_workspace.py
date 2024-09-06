@@ -32,12 +32,13 @@ from typing import List
 from diffusion_policy.dataset.multitask_dataset import MultiDataLoader
 from itertools import zip_longest
 import psutil
-# import mimicgen
+import mimicgen
 import time
 import gc 
 from diffusion_policy.dataset.base_dataset import BaseImageDataset, LinearNormalizer
 from diffusion_policy.model.common.normalizer import LinearNormalizer, SingleFieldLinearNormalizer
 OmegaConf.register_new_resolver("eval", eval, replace=True)
+
 
 class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
     include_keys = ['global_step', 'epoch']
@@ -45,6 +46,7 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
     def __init__(self, cfg: OmegaConf, output_dir=None):
         super().__init__(cfg, output_dir=output_dir)
 
+        self.my_obs = True
         # set seed
         seed = cfg.training.seed
         torch.manual_seed(seed)
@@ -72,7 +74,7 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
         if_eval = False
 
 
-        # lastest_ckpt_path = pathlib.Path("/home/yixiao/yixiao/sparse_diff/SDP/outputs/2024-08-17/11-55-30/checkpoints/latest.ckpt")
+        # lastest_ckpt_path = pathlib.Path("/home/yixiao/yixiao/sdp/SDP/outputs/2024-09-06/12-46-15/checkpoints/latest.ckpt")
         # self.load_checkpoint(path=lastest_ckpt_path)
         
         # resume training
@@ -122,7 +124,8 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
             normalizers = []
             for i in range(8):
                 normalizer = LinearNormalizer()
-                normalizer = torch.load('norm'+str(i)+'.ckpt')
+                # normalizer = torch.load('norm'+str(i)+'.ckpt')
+                normalizer.load_state_dict(torch.load('norm'+str(i)+'.ckpt'))
                 normalizers.append(normalizer)
 
 
@@ -314,7 +317,7 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
 
                 if if_eval:
                     scores = []
-
+                    print('here', cfg[f'task{0}'])
                     for i in range(cfg.task_num):
                         env_runner = hydra.utils.instantiate(cfg[f'task{i}'].env_runner, output_dir=self.output_dir)
                         runner_log = env_runner.run(policy,task_id=torch.tensor([i], dtype=torch.int64).to(device))

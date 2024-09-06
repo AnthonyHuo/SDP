@@ -489,8 +489,6 @@ class StateEncoder(nn.Module):
         
         self.gate_emb = nn.Parameter(torch.zeros(task_num, 16))
         
-
-        self.mlp1 = nn.Sequential(nn.Linear(53,128), nn.GELU(), nn.LayerNorm(128), nn.Linear(128,1))
         # agentview_image torch.Size([128, 3, 84, 84]) after [3,80,80]
         # robot0_eye_in_hand_image torch.Size([128, 3, 84, 84])
         # robot0_eef_pos torch.Size([128, 3])
@@ -537,12 +535,9 @@ class StateEncoder(nn.Module):
         
         loss += tmp_loss
         
-        # print(out.size())
         out_list = []
         for i in range(self.time_steps):
-            out_list.append(self.mlp1(out[:,time_index[i],:].permute(0,2,1)).permute(0,2,1))
-            # print('time', i, out[:,time_index[i],:].size())
-            # out_list.append(torch.mean(out[:,time_index[i],:], dim=1, keepdim=True))
+            out_list.append(torch.mean(out[:,time_index[i],:], dim=1, keepdim=True))
         
         out = torch.cat(out_list, dim=1)
                                 
