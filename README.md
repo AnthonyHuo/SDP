@@ -1,4 +1,4 @@
-# Sparse Diffusion Policy
+# CoRL2024: Sparse Diffusion Policy
 
 ### Dataset Download
 
