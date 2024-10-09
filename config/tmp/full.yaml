@@ -62,7 +62,7 @@ policy:
   n_action_steps: 8
   n_cond_layers: 0
   n_emb: 512
-  n_head: 8
+  n_head: 4
   n_layer: 12
   n_obs_steps: 2
   n_tasks: 8
@@ -1053,17 +1053,17 @@ training:
   device: cuda:0
   gradient_accumulate_every: 4
   lr_scheduler: cosine
-  lr_warmup_steps: 100
+  lr_warmup_steps: 500
   max_train_steps: null
   max_val_steps: null
-  num_epochs: 302
+  num_epochs: 303
   resume: false
-  rollout_every: 10000
-  sample_every: 10000
+  rollout_every: 50
+  sample_every: 10
   seed: 42
   tqdm_interval_sec: 1.0
   use_ema: true
-  val_every: 10000
+  val_every: 10
 val_dataloader:
   batch_size: 64
   num_workers: 1

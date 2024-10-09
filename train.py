@@ -44,6 +44,6 @@ if __name__ == "__main__":
     # parser.add_argument('--config', type=str, required=True)    
     # args = parser.parse_args()
     
-    data = read_yaml('config/multitask_d.yaml')
+    data = read_yaml('config/multitask_w.yaml')
     write_yaml(data, 'config/tmp/full.yaml')
     main()

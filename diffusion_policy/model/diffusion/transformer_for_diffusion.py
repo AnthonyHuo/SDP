@@ -116,9 +116,9 @@ class TransformerDecoderLayer(nn.Module):
         
         self.task_moe_layer = TaskMoE(
             input_size = d_model,
-            head_size = dim_feedforward // 8,
-            num_experts = 8,
-            k = 4,
+            head_size = dim_feedforward // 16,
+            num_experts = 16,
+            k = 8,
             bias=True,
             acc_aux_loss=True,
             w_MI=0.0005, #0.0005

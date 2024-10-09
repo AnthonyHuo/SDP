@@ -2,6 +2,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 import pynvml
 import psutil
+import numpy as np
 
 class MultiDataLoader:
     def __init__(self, data_loaders):
@@ -38,6 +39,11 @@ class MultiDataLoader:
         if self.current_batch_idx >= self.max_loader_length:
             raise StopIteration
         self.loader_idx = self.current_batch_idx % self.num_loaders
+        # nums = [2334, 1632, 3402, 4356, 5162, 5476, 3888, 3424]
+        # total_num = np.sum(nums)
+        # probs = [num / total_num for num in nums]
+        # task_id = int(np.random.choice([i for i in range(self.num_loaders)], 1, p=probs)[0])
+        # self.loader_idx = task_id
         data_loader = self.data_loaders[self.loader_idx]
         try:
             batch = next(data_loader)

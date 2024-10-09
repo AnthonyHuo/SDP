@@ -68,12 +68,17 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
     def run(self):
         cfg = copy.deepcopy(self.cfg)
 
-        if_train = True
-        if_eval = False
+        if_train = False
+        if_eval = True
 
 
-        # lastest_ckpt_path = pathlib.Path("/home/yixiao/projects/sdp/SDP/outputs/2024-08-06/23-16-19/checkpoints/latest.ckpt")
-        # self.load_checkpoint(path=lastest_ckpt_path)
+        # lastest_ckpt_path = pathlib.Path("/home/yixiao/yixiao/sdp/SDP/outputs/2024-09-09/14-49-09/checkpoints/50.ckpt")
+        # lastest_ckpt_path = pathlib.Path("/home/yixiao/yixiao/sdp/SDP/outputs/2024-09-09/14-49-09/checkpoints/100.ckpt")
+        # lastest_ckpt_path = pathlib.Path("/home/yixiao/yixiao/sdp/SDP/outputs/2024-09-10/12-04-39/checkpoints/150.ckpt")
+        lastest_ckpt_path = pathlib.Path("/home/yixiao/yixiao/sdp/SDP/outputs/2024-09-11/11-57-18/checkpoints/200.ckpt")
+        # lastest_ckpt_path = pathlib.Path("/home/yixiao/yixiao/sdp/SDP/outputs/2024-09-11/19-54-36/checkpoints/250.ckpt")
+        # lastest_ckpt_path = pathlib.Path("/home/yixiao/yixiao/sdp/SDP/outputs/2024-09-11/19-54-36/checkpoints/300.ckpt")
+        self.load_checkpoint(path=lastest_ckpt_path)
         # resume training
         # if cfg.training.resume:   
         #     lastest_ckpt_path = pathlib.Path("/home/yixiao/projects/sdp/SDP/outputs/2024-08-06/20-21-25/checkpoints/latest.ckpt")
@@ -127,11 +132,13 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
 
         self.model.set_normalizer(normalizers)
         
+        # print('lr', self.optimizer.param_groups[0]["lr"])
         
         if cfg.training.use_ema:
             self.ema_model.set_normalizer(normalizers)
 
         # configure lr scheduler
+
         if if_train:
             lr_scheduler = get_scheduler(
                 cfg.training.lr_scheduler,
@@ -299,21 +306,21 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                 policy.eval()
 
                 # run rollout
-                runner_logs = []
-                if ((self.epoch+1) % cfg.training.rollout_every) == 0:
+                # runner_logs = []
+                # if ((self.epoch+1) % cfg.training.rollout_every) == 0:
                     
-                    for i in range(cfg.task_num):
-                        env_runner = hydra.utils.instantiate(cfg[f'task{i}'].env_runner, output_dir=self.output_dir)
-                        runner_log = env_runner.run(policy,task_id=torch.tensor([i], dtype=torch.int64).to(device))
-                        runner_log = {key + f'_{i}': value for key, value in runner_log.items()}
-                        runner_logs.append(runner_log)
-                    for runner_log in runner_logs:
-                        step_log.update(runner_log)
+                #     for i in range(cfg.task_num):
+                #         env_runner = hydra.utils.instantiate(cfg[f'task{i}'].env_runner, output_dir=self.output_dir)
+                #         runner_log = env_runner.run(policy,task_id=torch.tensor([i], dtype=torch.int64).to(device))
+                #         runner_log = {key + f'_{i}': value for key, value in runner_log.items()}
+                #         runner_logs.append(runner_log)
+                #     for runner_log in runner_logs:
+                #         step_log.update(runner_log)
                 
 
                 if if_eval:
                     scores = []
-
+                    runner_logs = []
                     for i in range(cfg.task_num):
                         env_runner = hydra.utils.instantiate(cfg[f'task{i}'].env_runner, output_dir=self.output_dir)
                         runner_log = env_runner.run(policy,task_id=torch.tensor([i], dtype=torch.int64).to(device))
@@ -331,48 +338,48 @@ class TrainDiffusionTransformerHybridWorkspace(BaseWorkspace):
                     
                 env_runner = None
                 # run validation
-                if (self.epoch % cfg.training.val_every) == 0:
-                    with torch.no_grad():
-                        val_losses_list = []
-                        for i in range(cfg.task_num):
-                            val_losses_list.append([])
-                        zip_val_dataloaders = zip_longest(*val_dataloaders)
-                        # val_losses3 = list()
-                        with tqdm.tqdm(zip_val_dataloaders, desc=f"Validation epoch {self.epoch}", 
-                                leave=False, mininterval=cfg.training.tqdm_interval_sec) as tepoch:
-                            for batch_idx, batches in enumerate(tepoch):
-                                for i, batch in enumerate(batches):
-                                    if batch is None:
-                                        continue
-                                    batch = dict_apply(batch, lambda x: x.to(device, non_blocking=True))
-                                    loss = self.model.compute_loss(batch,task_id=torch.tensor([i], dtype=torch.int64).to(device))
-                                    val_losses_list[i].append(loss)
-                                    if (cfg.training.max_val_steps is not None) \
-                                        and batch_idx >= (cfg.training.max_val_steps-1):
-                                        break
-                        if len(val_losses_list[0]) > 0:
-                            for i, val_losses in enumerate(val_losses_list):
-                                val_loss = torch.mean(torch.tensor(val_losses)).item()
-                                step_log[f'val_loss_{i}'] = val_loss
+                # if (self.epoch % cfg.training.val_every) == 0:
+                #     with torch.no_grad():
+                #         val_losses_list = []
+                #         for i in range(cfg.task_num):
+                #             val_losses_list.append([])
+                #         zip_val_dataloaders = zip_longest(*val_dataloaders)
+                #         # val_losses3 = list()
+                #         with tqdm.tqdm(zip_val_dataloaders, desc=f"Validation epoch {self.epoch}", 
+                #                 leave=False, mininterval=cfg.training.tqdm_interval_sec) as tepoch:
+                #             for batch_idx, batches in enumerate(tepoch):
+                #                 for i, batch in enumerate(batches):
+                #                     if batch is None:
+                #                         continue
+                #                     batch = dict_apply(batch, lambda x: x.to(device, non_blocking=True))
+                #                     loss = self.model.compute_loss(batch,task_id=torch.tensor([i], dtype=torch.int64).to(device))
+                #                     val_losses_list[i].append(loss)
+                #                     if (cfg.training.max_val_steps is not None) \
+                #                         and batch_idx >= (cfg.training.max_val_steps-1):
+                #                         break
+                #         if len(val_losses_list[0]) > 0:
+                #             for i, val_losses in enumerate(val_losses_list):
+                #                 val_loss = torch.mean(torch.tensor(val_losses)).item()
+                #                 step_log[f'val_loss_{i}'] = val_loss
                             # step_log['val_loss3'] = val_loss3
                 # run diffusion sampling on a training batch
-                if (self.epoch % cfg.training.sample_every) == 0:
-                    with torch.no_grad():
-                        for i, train_sampling_batch in enumerate(train_sampling_batchs):
-                            assert train_sampling_batch is not None
-                            batch = dict_apply(train_sampling_batch, lambda x: x.to(device, non_blocking=True))
-                            obs_dict = batch['obs']
-                            gt_action = batch['action']
-                            result = policy.predict_action(obs_dict,task_id=torch.tensor([i], dtype=torch.int64).to(device))
-                            pred_action = result['action_pred'] 
-                            mse = torch.nn.functional.mse_loss(pred_action, gt_action)
-                            step_log[f'train_action_mse_error_{i}'] = mse.item()
-                            del batch
-                            del obs_dict
-                            del gt_action
-                            del result
-                            del pred_action
-                            del mse
+                # if (self.epoch % cfg.training.sample_every) == 0:
+                #     with torch.no_grad():
+                #         for i, train_sampling_batch in enumerate(train_sampling_batchs):
+                #             assert train_sampling_batch is not None
+                #             batch = dict_apply(train_sampling_batch, lambda x: x.to(device, non_blocking=True))
+                #             obs_dict = batch['obs']
+                #             gt_action = batch['action']
+                #             result = policy.predict_action(obs_dict,task_id=torch.tensor([i], dtype=torch.int64).to(device))
+                #             pred_action = result['action_pred'] 
+                #             mse = torch.nn.functional.mse_loss(pred_action, gt_action)
+                #             step_log[f'train_action_mse_error_{i}'] = mse.item()
+                #             del batch
+                #             del obs_dict
+                #             del gt_action
+                #             del result
+                #             del pred_action
+                #             del mse
                 
                 # checkpoint
                 self.save_checkpoint()
