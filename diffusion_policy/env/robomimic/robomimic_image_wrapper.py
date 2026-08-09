@@ -4,6 +4,15 @@ import numpy as np
 import gym
 from gym import spaces
 from omegaconf import OmegaConf
+
+# Patch mujoco_py to fix AttributeError: module 'mujoco_py' has no attribute 'builder'
+# This ensures compatibility with robomimic 0.2.0 and various mujoco_py versions
+import mujoco_py
+if not hasattr(mujoco_py, 'builder'):
+    class _MujocoPyBuilder:
+        MujocoException = mujoco_py.MujocoException
+    mujoco_py.builder = _MujocoPyBuilder
+
 from robomimic.envs.env_robosuite import EnvRobosuite
 
 class RobomimicImageWrapper(gym.Env):
